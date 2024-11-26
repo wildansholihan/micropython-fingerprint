@@ -1,12 +1,13 @@
 from buzzer import beep
+from bluetooth_CL import configure_bluetooth, send_at_command, uart  # Pastikan uart ada di sini
 from oled_text import init_display, display_text, display_centered_text, clear_display
 from fingerprint import enroll_fingerprint, search_fingerprint, remove_fingerprint, remove_all_fingerprints
 import time
 
-# Example: Beep 3 times
 display, group = init_display()
-display_centered_text(display, group, text="Selamat datang", wrap_at=16)
+display_centered_text(display, group, text="setup bluetooth...", wrap_at=16)
 beep(2, 0.1)
+configure_bluetooth()  # Fungsi konfigurasi bluetooth dari bluetooth_CL
 time.sleep(1)
 
 while True:
@@ -34,6 +35,3 @@ while True:
         remove_all_fingerprints()
     else:
         print("Invalid choice!")
-
-
-
