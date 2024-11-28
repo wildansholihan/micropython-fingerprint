@@ -107,11 +107,11 @@ def configure_bluetooth():
     ensure_at_mode()
     
     # Rename the Bluetooth module
-    rename_bluetooth("MyNewBluetoothName")
+    #rename_bluetooth("MyNewBluetoothName")
     
     # Make Bluetooth pairable and set it to slave mode
-    make_bluetooth_pairable()
-    
+    #make_bluetooth_pairable()
+    send_at_command("AT+RESET")
     # Exit AT mode to make it discoverable
     exit_at_mode()
 

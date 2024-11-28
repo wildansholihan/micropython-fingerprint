@@ -1,10 +1,12 @@
 import time
 import board
 import busio
+from oled_text import init_display, display_text, display_centered_text, clear_display
 from adafruit_fingerprint import Adafruit_Fingerprint
 
 # Initialize UART for communication with the fingerprint sensor
 uart = busio.UART(board.GP0, board.GP1, baudrate=57600)
+display, group = init_display()
 
 # Create a fingerprint sensor instance
 finger = Adafruit_Fingerprint(uart)
@@ -13,8 +15,12 @@ finger = Adafruit_Fingerprint(uart)
 def enroll_fingerprint(location):
     # Check if the ID already exists
     print(f"Checking if ID {location} is already in use...")
+    clear_display(group)
+    display_centered_text(display, group, text="Checking if ID {location} is already in use...", wrap_at=20)
     if finger.load_model(location) == 0:  # 0 indicates success, meaning ID exists
         print(f"Error: ID {location} is already in use. Choose a different ID.")
+        clear_display(group)
+        display_centered_text(display, group, text="Error: ID {location} is already in use. Choose a different ID.", wrap_at=20)
         return
     
     # Check if the fingerprint is already registered
