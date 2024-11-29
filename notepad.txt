@@ -1,0 +1,8 @@
+SSID: GoThru Dev
+PASS: devmediaindonesia123
+
+SSID: GoThru Master (2.4G)
+PASS: mediaindonesia123
+
+SSID: Gothru01
+PASS: iconnet123
