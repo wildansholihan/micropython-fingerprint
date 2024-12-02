@@ -4,6 +4,7 @@ import displayio
 from adafruit_display_text import label
 import terminalio
 import adafruit_displayio_ssd1306
+import time
 
 # Initialize the display
 def init_display(width=128, height=64, sda_pin=board.GP16, scl_pin=board.GP17):
@@ -104,3 +105,4 @@ def display_centered_text(display, group, font=terminalio.FONT, color=0xFFFFFF, 
 
         # Move down for the next line
         y_offset += line_height
+        

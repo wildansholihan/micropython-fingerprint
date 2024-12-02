@@ -3,6 +3,3 @@ Board ID:raspberry_pi_pico_w
 UID:E6614C311B4B2D32
 MAC:28:CD:C1:06:86:B8
 boot.pyoutput:
-Traceback (bagian terakhir dari panggilan terkini):
-  File "boot.py", baris 10, dalam <module>
-OSError: [Errno 30] sistem file (filesystem) bersifat Read-only

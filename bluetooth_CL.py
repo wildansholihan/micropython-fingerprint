@@ -22,7 +22,6 @@ def ensure_at_mode():
         print("AT mode active.")
     else:
         print("Error: Module not in AT mode. Check hardware setup.")
-        exit()
 
 def rename_bluetooth(new_name):
     """Rename the HC-05 Bluetooth module."""

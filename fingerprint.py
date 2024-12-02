@@ -14,81 +14,147 @@ finger = Adafruit_Fingerprint(uart)
 # Function to enroll a fingerprint with ID and finger validation
 def enroll_fingerprint(location):
     # Check if the ID already exists
-    print(f"Checking if ID {location} is already in use...")
+    message = f"Checking if ID {location} is in use..."
+    print(message)
     clear_display(group)
-    display_centered_text(display, group, text="Checking if ID {location} is already in use...", wrap_at=20)
+    display_centered_text(display, group, text=message, wrap_at=20)
+    
     if finger.load_model(location) == 0:  # 0 indicates success, meaning ID exists
-        print(f"Error: ID {location} is already in use. Choose a different ID.")
+        message = f"Error: ID {location} is already in use."
+        print(message)
         clear_display(group)
-        display_centered_text(display, group, text="Error: ID {location} is already in use. Choose a different ID.", wrap_at=20)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
     
     # Check if the fingerprint is already registered
-    print("Place your finger on the sensor to check if it is already registered...")
+    message = "Place finger to check if registered..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
+    
     while finger.get_image() != 0:  # Wait until a valid image is captured
         pass
     if finger.image_2_tz(1) != 0:
-        print("Error converting image!")
+        message = "Error converting image!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
+    
     if finger.finger_search() == 0:  # 0 indicates a match was found
-        print(f"Error: This fingerprint is already registered with ID {finger.finger_id}.")
+        message = f"Error: Fingerprint exists with ID {finger.finger_id}."
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
     
     # Proceed with enrollment
-    print("Place your finger on the sensor for enrollment...")
+    message = "Place finger for enrollment..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
+    
     while finger.get_image() != 0:  # Wait for a valid image
         pass
     if finger.image_2_tz(1) != 0:
-        print("Error converting image!")
+        message = "Error converting image!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
-    print("Remove your finger...")
+    
+    message = "Remove your finger..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
     time.sleep(1)
     
-    print("Place the same finger again...")
+    message = "Place the same finger again..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
     while finger.get_image() != 0:
         pass
     if finger.image_2_tz(2) != 0:
-        print("Error converting image!")
+        message = "Error converting image!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
     
     if finger.create_model() != 0:
-        print("Error creating model!")
+        message = "Error creating model!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
     if finger.store_model(location) != 0:
-        print("Error storing model!")
+        message = "Error storing model!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
     
-    print(f"Fingerprint enrolled successfully at location {location}")
+    message = f"Fingerprint enrolled successfully at ID {location}!"
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
 
 # Function to search for a fingerprint
 def search_fingerprint():
-    print("Place your finger on the sensor...")
-    while finger.get_image() != 0:  # 0 indicates OK
+    message = "Place your finger on the sensor..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
+    
+    while finger.get_image() != 0:  # Wait for a valid image
         pass
     if finger.image_2_tz(1) != 0:
-        print("Error converting image!")
+        message = "Error converting image!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
         return
     
-    # Call finger_search and capture the response
-    result = finger.finger_search()
-    if result == 0:  # 0 indicates success
-        print(f"Found fingerprint at ID {finger.finger_id} with confidence {finger.confidence}")
+    if finger.finger_search() == 0:  # 0 indicates success
+        message = f"Found fingerprint at ID {finger.finger_id} with confidence {finger.confidence}."
+        print(message)
+        clear_display(group)
+        display_text(display, group, text=message, wrap_at=25)
     else:
-        print("Fingerprint not found")
-        
+        message = "Fingerprint not found."
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
+
 # Function to remove a fingerprint by ID
 def remove_fingerprint(location):
-    print(f"Attempting to remove fingerprint at ID {location}...")
+    message = f"Removing fingerprint at ID {location}..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
+    
     if finger.delete_model(location) == 0:  # 0 indicates success
-        print(f"Fingerprint at ID {location} removed successfully!")
+        message = f"Fingerprint at ID {location} removed successfully!"
     else:
-        print(f"Failed to remove fingerprint at ID {location}.")
-        
+        message = f"Failed to remove fingerprint at ID {location}."
+    
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
+
 # Function to remove all fingerprints
 def remove_all_fingerprints():
-    print("Attempting to remove all fingerprints...")
+    message = "Removing all fingerprints..."
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
+    
     if finger.empty_library() == 0:  # 0 indicates success
-        print("All fingerprints have been removed successfully!")
+        message = "All fingerprints removed successfully!"
     else:
-        print("Failed to remove fingerprints.")
-
+        message = "Failed to remove fingerprints."
+    
+    print(message)
+    clear_display(group)
+    display_centered_text(display, group, text=message, wrap_at=20)
