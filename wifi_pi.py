@@ -1,11 +1,29 @@
 import storage
 import wifi
+import board
+import digitalio
 import socketpool
 import time
 from buzzer import beep
 from oled_text import display_centered_text, clear_display, display_text
 from fingerprint import group, display
 from bluetooth_CL import uart
+
+# Setup GPIO untuk LED
+LED_GREEN = digitalio.DigitalInOut(board.GP18)  # Pin GPIO 18 untuk LED hijau
+LED_GREEN.direction = digitalio.Direction.OUTPUT
+
+LED_RED = digitalio.DigitalInOut(board.GP19)  # Pin GPIO 19 untuk LED merah
+LED_RED.direction = digitalio.Direction.OUTPUT
+
+# Fungsi untuk mengatur status LED
+def set_led_status(connected):
+    if connected:
+        LED_GREEN.value = True  # Nyalakan LED hijau
+        LED_RED.value = False   # Matikan LED merah
+    else:
+        LED_GREEN.value = False  # Matikan LED hijau
+        LED_RED.value = True     # Nyalakan LED merah
 
 # Ini sangat penting! Jangan dihapus!
 storage.remount('/', readonly=False)
@@ -40,104 +58,79 @@ def save_wifi_config(ssid, password):
         f.write(f"{ssid}:{password}")
     print("Wi-Fi configuration saved.")
 
-# Fungsi untuk menghubungkan ke Wi-Fi
-def connect_wifi(ssid, password):
-    wifi.radio.connect(ssid, password)
-    print(f"Connected to {ssid}")
+# Fungsi untuk mencoba koneksi Wi-Fi dengan logika lengkap
+def connect_wifi(ssid_input=None, password_input=None):
+    ssid_stored, password_stored = load_wifi_config()
 
+    # Gunakan konfigurasi tersimpan jika input kosong
+    if not ssid_input:
+        ssid_input = ssid_stored
+    if not password_input:
+        password_input = password_stored
+
+    if ssid_input and password_input:
+        if ssid_input == ssid_stored and password_input == password_stored:
+            print("Mencoba menghubungkan...")
+            display_centered_text(display, group, text="Connecting...")
+            try:
+                wifi.radio.connect(ssid_stored, password_stored)
+                print(f"Berhasil terhubung ke {ssid_stored}")
+                display_centered_text(display, group, text="Connected!")
+                set_led_status(True)
+                beep(1, 0.1)
+                return True
+            except Exception as e:
+                print(f"Gagal terhubung: {e}")
+                display_centered_text(display, group, text="Gagal Terhubung!")
+                set_led_status(False)
+                beep(2, 0.1)
+                return False
+        else:
+            print("SSID atau password tidak cocok!")
+            display_centered_text(display, group, text="SSID/PASS Tidak Cocok!")
+            set_led_status(False)
+            beep(3, 0.1)
+            return False
+    else:
+        print("Konfigurasi Wi-Fi tidak ditemukan.")
+        display_centered_text(display, group, text="Config Kosong!")
+        set_led_status(False)
+        beep(3, 0.1)
+        return False
+
+# Fungsi untuk setup Wi-Fi
 def wifi_setup():
     clear_display(group)
     display_centered_text(display, group, text="Cek Wi-Fi Config...")
+    
+    # Coba koneksi menggunakan konfigurasi tersimpan
+    if connect_wifi():
+        print("Wi-Fi terkoneksi.")
+        return  # Jika berhasil, keluar dari fungsi
+    
+    # Jika koneksi gagal, minta SSID dan Password baru
+    while True:
+        clear_display(group)
+        display_centered_text(display, group, text="Masukkan SSID baru...")
+        ssid = safe_uart_read()
+        if ssid:
+            break  # Keluar jika SSID sudah diisi
 
-    # Cek apakah sudah ada SSID yang tersimpan
-    ssid, password = load_wifi_config()
+    while True:
+        clear_display(group)
+        display_centered_text(display, group, text="Masukkan Password baru...")
+        password = safe_uart_read()
+        if password:
+            break  # Keluar jika password sudah diisi
 
-    if ssid and password:
-        display_centered_text(display, group, text="Mencoba menghubungkan...")
-        try:
-            connect_wifi(ssid, password)
-            display_centered_text(display, group, text="Connected!")
-            beep(1, 0.1)
-            time.sleep(2)  # Tunggu sejenak
-        except Exception as e:
-            print(f"Failed to connect: {e}")
-            display_centered_text(display, group, text="Gagal Terhubung!")
-            beep(2, 0.1)
-            time.sleep(2)
-            # Jika gagal, beri kesempatan untuk memasukkan SSID dan password baru
-            while True:
-                display_centered_text(display, group, text="Masukkan SSID baru...")
-                ssid = safe_uart_read()  # Gunakan fungsi aman untuk membaca SSID
-                if ssid:  # Cek jika SSID tidak kosong
-                    break  # Keluar dari loop jika SSID valid
+    # Simpan konfigurasi baru
+    save_wifi_config(ssid, password)
 
-            while True:
-                display_centered_text(display, group, text="Masukkan Password...")
-                password = safe_uart_read()  # Gunakan fungsi aman untuk membaca Password
-                if password:  # Cek jika password tidak kosong
-                    break  # Keluar dari loop jika password valid
-
-            # Pastikan SSID dan password tidak kosong sebelum menyimpannya
-            save_wifi_config(ssid, password)
-            try:
-                connect_wifi(ssid, password)
-                display_centered_text(display, group, text="Connected!")
-                beep(1, 0.1)
-                time.sleep(2)
-            except Exception as e:
-                print(f"Failed to reconnect: {e}")
-                display_centered_text(display, group, text="Gagal Terhubung Lagi!")
-                beep(2, 0.1)
-                time.sleep(2)
-
+    # Coba koneksi ulang dengan SSID dan Password baru
+    print(f"Mencoba menghubungkan ke {ssid}...")
+    if not connect_wifi(ssid, password):
+        print("Koneksi masih gagal")
+        time.sleep(2)
     else:
-        # Jika tidak ada konfigurasi, minta SSID dan password
-        while True:
-            display_centered_text(display, group, text="Masukkan SSID...")
-            ssid = safe_uart_read()  # Gunakan fungsi aman untuk membaca SSID
-            if ssid:  # Pastikan SSID tidak kosong
-                break  # Keluar dari loop jika SSID valid
-
-        while True:
-            display_centered_text(display, group, text="Masukkan Password...")
-            password = safe_uart_read()  # Gunakan fungsi aman untuk membaca Password
-            if password:  # Pastikan password tidak kosong
-                break  # Keluar dari loop jika password valid
-
-        # Pastikan SSID dan password tidak kosong sebelum menyimpannya
-        save_wifi_config(ssid, password)
-        try:
-            connect_wifi(ssid, password)
-            display_centered_text(display, group, text="Connected!")
-            beep(1, 0.1)
-            time.sleep(2)
-        except Exception as e:
-            print(f"Failed to connect: {e}")
-            display_centered_text(display, group, text="Gagal Terhubung!")
-            beep(2, 0.1)
-            time.sleep(2)
-            # Minta pengguna untuk memasukkan SSID dan password lagi jika gagal
-            while True:
-                display_centered_text(display, group, text="Masukkan SSID baru...")
-                ssid = safe_uart_read()  # Gunakan fungsi aman untuk membaca SSID
-                if ssid:  # Pastikan SSID tidak kosong
-                    break  # Keluar dari loop jika SSID valid
-
-            while True:
-                display_centered_text(display, group, text="Masukkan Password...")
-                password = safe_uart_read()  # Gunakan fungsi aman untuk membaca Password
-                if password:  # Pastikan password tidak kosong
-                    break  # Keluar dari loop jika password valid
-
-            # Pastikan SSID dan password tidak kosong sebelum menyimpannya
-            save_wifi_config(ssid, password)
-            try:
-                connect_wifi(ssid, password)
-                display_centered_text(display, group, text="Connected!")
-                beep(1, 0.0)
-                time.sleep(2)
-            except Exception as e:
-                print(f"Failed to reconnect: {e}")
-                display_centered_text(display, group, text="Gagal Terhubung Lagi!")
-                beep(2, 0.1)
-                time.sleep(2)
+        print("Koneksi berhasil dengan konfigurasi baru!")
+        time.sleep(2)
