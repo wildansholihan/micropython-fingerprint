@@ -6,6 +6,9 @@ import time
 # Initialize UART globally for Bluetooth communication
 uart = busio.UART(board.GP4, board.GP5, baudrate=38400)  # Default baud rate for HC-05 (Data Mode)
 
+LED_BLUE = digitalio.DigitalInOut(board.GP19)  # Pin GPIO 19 untuk LED merah
+LED_BLUE.direction = digitalio.Direction.OUTPUT
+
 # Initialize pin STATE from HC-05 to monitor connection status
 state_pin = digitalio.DigitalInOut(board.GP11)  # Ganti dengan GPIO yang Anda pilih
 state_pin.direction = digitalio.Direction.INPUT
@@ -24,12 +27,12 @@ def send_at_command(command):
         return response.decode('utf-8').strip()
     return "No response"
 
-def enter_at_mode():
-    """Set the HC-05 module to AT mode by setting EN LOW."""
-    print("Entering AT Mode...")
-    en_pin.value = False  # Set EN pin to LOW to enter AT mode
-    time.sleep(2)  # Delay to ensure mode change
-    print("HC-05 should now be in AT mode. You can manually call AT commands.")
+def turn_on_bluetooth():
+    """Set the HC-05 module to Refresh"""
+    en_pin.value = False
+    time.sleep(0.5)
+    en_pin.value = True  # Set EN pin to LOW to enter AT mode
+    print("HC-05 Turned on!")
 
 def ensure_at_mode():
     """Ensure the HC-05 module is in AT mode."""
@@ -41,7 +44,7 @@ def ensure_at_mode():
         send_at_command("AT+RESET")
         print("AT+RESET sent, exiting AT mode.")
     else:
-        print("Error: Module not in AT mode. Proceeding to check Bluetooth connection.")
+        print("Module not in AT mode")
 
 def check_bluetooth_status():
     """Check Bluetooth connection status via STATE pin."""
@@ -50,15 +53,22 @@ def check_bluetooth_status():
     
     if state:
         print("Bluetooth is connected to a device.")
+        LED_BLUE.value = True
         return True
     else:
         print("No Bluetooth connection detected.")
+        LED_BLUE.value = False
         return False
 
 # Main function to initialize and configure HC-05
 def configure_bluetooth():
     print("Starting Bluetooth configuration...")
-
+    
+    # Turned on bluetooth
+    turn_on_bluetooth()
+    
+    #jika dimode at maka keluar
+    ensure_at_mode()
     # Check Bluetooth connection status via STATE pin
     check_bluetooth_status()
 

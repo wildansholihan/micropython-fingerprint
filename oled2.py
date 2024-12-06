@@ -6,8 +6,11 @@ import time
 from adafruit_display_text import label
 import terminalio
 import adafruit_imageload
-from bluetooth_CL import check_bluetooth_status
 
+# Path to the image file
+IMAGE_FILE = "scan.bmp"
+SPRITE_SIZE = (64, 64)
+FRAMES = 28
 
 # Initialize the display
 def init_display(width=128, height=64, sda_pin=board.GP16, scl_pin=board.GP17):
@@ -19,41 +22,36 @@ def init_display(width=128, height=64, sda_pin=board.GP16, scl_pin=board.GP17):
     display.root_group = group
     return display, group
 
-display, group = init_display()
-
 # Function to invert all colors in the sprite palette
 def invert_colors(icon_pal):
     for i in range(len(icon_pal)):
         icon_pal[i] = (icon_pal[i] ^ 0xFFFFFF)  # Invert each color in the palette
 
 # Function to display the sprite animation on the OLED
-def display_image(display, group, bmp_path):
-    """
-    Display a single image on the OLED screen.
+def display_sprite_animation(display, group, bmp_path):
+    icon_bit, icon_pal = adafruit_imageload.load(bmp_path, bitmap=displayio.Bitmap, palette=displayio.Palette)
+    invert_colors(icon_pal)
     
-    :param display: Display object
-    :param group: Display group to add content
-    :param bmp_path: Path to the BMP file
-    """
-    clear_display(group)
-    # Load the bitmap and palette
-    icon_bit, icon_pal = adafruit_imageload.load(
-        bmp_path, bitmap=displayio.Bitmap, palette=displayio.Palette
-    )
-    invert_colors(icon_pal)  # Invert colors if needed
-
-    # Create a TileGrid for the bitmap
     icon_grid = displayio.TileGrid(
-        icon_bit,
-        pixel_shader=icon_pal,
-        x=(display.width - icon_bit.width) // 2,  # Center horizontally
-        y=(display.height - icon_bit.height) // 2,  # Center vertically
+        icon_bit, pixel_shader=icon_pal,
+        width=1, height=1,
+        tile_height=SPRITE_SIZE[1], tile_width=SPRITE_SIZE[0],
+        default_tile=0,
+        x=32, y=0
     )
-
-    # Add the TileGrid to the display group
+    
     group.append(icon_grid)
 
-                
+    timer = 0
+    pointer = 0
+    while True:
+        if (timer + 0.1) < time.monotonic():
+            icon_grid[0] = pointer
+            pointer += 1
+            timer = time.monotonic()
+            if pointer >= FRAMES:
+                pointer = 0
+
 # Clear display content
 def clear_display(group):
     """Clear all content on the display."""

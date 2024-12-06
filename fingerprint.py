@@ -1,15 +1,17 @@
 import time
 import board
 import busio
-from oled_text import init_display, display_text, display_centered_text, clear_display
+from oled import init_display, display_text, display_centered_text, clear_display, display_image, display, group
 from adafruit_fingerprint import Adafruit_Fingerprint
+from bluetooth_CL import check_bluetooth_status
+from wifi_pi import send_attendance_data, get_attendance_data
 
 # Initialize UART for communication with the fingerprint sensor
-uart = busio.UART(board.GP0, board.GP1, baudrate=57600)
-display, group = init_display()
+uart2 = busio.UART(board.GP0, board.GP1, baudrate=57600)
 
 # Create a fingerprint sensor instance
-finger = Adafruit_Fingerprint(uart)
+finger = Adafruit_Fingerprint(uart2)
+
 
 # Function to enroll a fingerprint with ID and finger validation
 def enroll_fingerprint(location):
@@ -95,6 +97,7 @@ def enroll_fingerprint(location):
         display_centered_text(display, group, text=message, wrap_at=20)
         return
     
+    send_attendance_data(location)
     message = f"Fingerprint enrolled successfully at ID {location}!"
     print(message)
     clear_display(group)
@@ -126,6 +129,39 @@ def search_fingerprint():
         print(message)
         clear_display(group)
         display_centered_text(display, group, text=message, wrap_at=20)
+
+
+def search_fingerprint_noBT():
+    """
+    Cari sidik jari tanpa Bluetooth, menampilkan gambar statis pada OLED saat pencarian berlangsung.
+    """
+    # Tampilkan gambar tunggal (statis) selama pencarian sidik jari
+    display_image(display, group, "scan.bmp")
+
+    # Loop untuk mencari sidik jari
+    while finger.get_image() != 0 and not check_bluetooth_status():
+        pass
+    if finger.image_2_tz(1) != 0:
+        message = "Error converting image!"
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
+        time.sleep(2)
+        return
+
+    if finger.finger_search() == 0:  # 0 indicates success
+        message = f"Found fingerprint at ID {finger.finger_id} with confidence {finger.confidence}."
+        print(message)
+        clear_display(group)
+        display_text(display, group, text=message, wrap_at=25)
+        get_attendance_data(finger.finger_id)
+        time.sleep(2)
+    else:
+        message = "Fingerprint not found."
+        print(message)
+        clear_display(group)
+        display_centered_text(display, group, text=message, wrap_at=20)
+        time.sleep(2)
 
 # Function to remove a fingerprint by ID
 def remove_fingerprint(location):

@@ -5,25 +5,22 @@ import digitalio
 import socketpool
 import time
 from buzzer import beep
-from oled_text import display_centered_text, clear_display, display_text
-from fingerprint import group, display
+from oled import display_centered_text, clear_display, display_text, group, display
 from bluetooth_CL import uart
+import adafruit_requests
 
 # Setup GPIO untuk LED
 LED_GREEN = digitalio.DigitalInOut(board.GP18)  # Pin GPIO 18 untuk LED hijau
 LED_GREEN.direction = digitalio.Direction.OUTPUT
 
-LED_RED = digitalio.DigitalInOut(board.GP19)  # Pin GPIO 19 untuk LED merah
-LED_RED.direction = digitalio.Direction.OUTPUT
-
-# Fungsi untuk mengatur status LED
-def set_led_status(connected):
-    if connected:
+# Fungsi untuk memeriksa koneksi Wi-Fi dan mengatur status LED
+def is_wifi_connected():
+    if wifi.radio.ipv4_address:  # Jika ada alamat IP, Wi-Fi terhubung
         LED_GREEN.value = True  # Nyalakan LED hijau
-        LED_RED.value = False   # Matikan LED merah
+        return True
     else:
         LED_GREEN.value = False  # Matikan LED hijau
-        LED_RED.value = True     # Nyalakan LED merah
+        return False
 
 # Ini sangat penting! Jangan dihapus!
 storage.remount('/', readonly=False)
@@ -76,27 +73,91 @@ def connect_wifi(ssid_input=None, password_input=None):
                 wifi.radio.connect(ssid_stored, password_stored)
                 print(f"Berhasil terhubung ke {ssid_stored}")
                 display_centered_text(display, group, text="Connected!")
-                set_led_status(True)
                 beep(1, 0.1)
+                is_wifi_connected()  # Memeriksa koneksi dan mengatur status LED
                 return True
             except Exception as e:
                 print(f"Gagal terhubung: {e}")
                 display_centered_text(display, group, text="Gagal Terhubung!")
-                set_led_status(False)
+                is_wifi_connected()  # Memeriksa koneksi dan mengatur status LED
                 beep(2, 0.1)
                 return False
         else:
             print("SSID atau password tidak cocok!")
             display_centered_text(display, group, text="SSID/PASS Tidak Cocok!")
-            set_led_status(False)
+            is_wifi_connected()  # Memeriksa koneksi dan mengatur status LED
             beep(3, 0.1)
             return False
     else:
         print("Konfigurasi Wi-Fi tidak ditemukan.")
         display_centered_text(display, group, text="Config Kosong!")
-        set_led_status(False)
+        is_wifi_connected()  # Memeriksa koneksi dan mengatur status LED
         beep(3, 0.1)
         return False
+
+# Fungsi untuk mengambil data
+def get_attendance_data(id):
+    url = f"http://107.155.65.135:3010/attendance/{id}"
+    headers = {'Content-Type': 'application/json'}
+    
+    # Setup socket pool for HTTP requests
+    pool = socketpool.SocketPool(wifi.radio)
+    
+    # Inisialisasi objek requests
+    requests_session = adafruit_requests.Session(pool, None)
+    
+    try:
+        # Send GET request to fetch data
+        response = requests_session.get(url, headers=headers)
+        print(f"Response status: {response.status_code}")
+        print(f"Response text: {response.text}")
+        response.close()
+    except Exception as e:
+        print(f"Error retrieving data: {e}")
+
+# Fungsi untuk mengirim data
+def send_attendance_data(id):
+    url = "http://107.155.65.135:3010/attendance"
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "id": id,
+        "name": "fingerprint"
+    }
+    
+    # Setup socket pool for HTTP requests
+    pool = socketpool.SocketPool(wifi.radio)  # Membuat pool koneksi
+    
+    # Inisialisasi objek requests
+    requests_session = adafruit_requests.Session(pool, None)
+    
+    try:
+        # Send POST request directly using requests_session.post
+        response = requests_session.post(url, json=data, headers=headers)
+        print(f"Response status: {response.status_code}")
+        print(f"Response text: {response.text}")
+        response.close()
+    except Exception as e:
+        print(f"Error sending data: {e}")
+      
+# Fungsi untuk menghapus data
+def delete_attendance_data(id):
+    url = f"http://107.155.65.135:3010/attendance/{id}"
+    headers = {'Content-Type': 'application/json'}
+    
+    # Setup socket pool for HTTP requests
+    pool = socketpool.SocketPool(wifi.radio)
+    
+    # Inisialisasi objek requests
+    requests_session = adafruit_requests.Session(pool, None)
+    
+    try:
+        # Send DELETE request to delete data
+        response = requests_session.delete(url, headers=headers)
+        print(f"Response status: {response.status_code}")
+        print(f"Response text: {response.text}")
+        response.close()
+    except Exception as e:
+        print(f"Error deleting data: {e}")
 
 # Fungsi untuk setup Wi-Fi
 def wifi_setup():
@@ -134,3 +195,6 @@ def wifi_setup():
     else:
         print("Koneksi berhasil dengan konfigurasi baru!")
         time.sleep(2)
+
+connect_wifi()
+send_attendance_data(1)
