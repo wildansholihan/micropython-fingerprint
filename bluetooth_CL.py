@@ -48,15 +48,12 @@ def ensure_at_mode():
 
 def check_bluetooth_status():
     """Check Bluetooth connection status via STATE pin."""
-    print("Checking Bluetooth connection via STATE pin...")
     state = state_pin.value  # Read the value of STATE pin (High if connected, Low if not)
     
     if state:
-        print("Bluetooth is connected to a device.")
         LED_BLUE.value = True
         return True
     else:
-        print("No Bluetooth connection detected.")
         LED_BLUE.value = False
         return False
 

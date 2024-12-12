@@ -95,33 +95,13 @@ def connect_wifi(ssid_input=None, password_input=None):
         beep(3, 0.1)
         return False
 
-# Fungsi untuk mengambil data
-def get_attendance_data(id):
-    url = f"http://107.155.65.135:3010/attendance/{id}"
-    headers = {'Content-Type': 'application/json'}
-    
-    # Setup socket pool for HTTP requests
-    pool = socketpool.SocketPool(wifi.radio)
-    
-    # Inisialisasi objek requests
-    requests_session = adafruit_requests.Session(pool, None)
-    
-    try:
-        # Send GET request to fetch data
-        response = requests_session.get(url, headers=headers)
-        print(f"Response status: {response.status_code}")
-        print(f"Response text: {response.text}")
-        response.close()
-    except Exception as e:
-        print(f"Error retrieving data: {e}")
-
 # Fungsi untuk mengirim data
 def send_attendance_data(id):
     url = "http://107.155.65.135:3010/attendance"
     headers = {'Content-Type': 'application/json'}
     data = {
         "id": id,
-        "name": "fingerprint"
+        "name": "test"
     }
     
     # Setup socket pool for HTTP requests
@@ -138,26 +118,6 @@ def send_attendance_data(id):
         response.close()
     except Exception as e:
         print(f"Error sending data: {e}")
-      
-# Fungsi untuk menghapus data
-def delete_attendance_data(id):
-    url = f"http://107.155.65.135:3010/attendance/{id}"
-    headers = {'Content-Type': 'application/json'}
-    
-    # Setup socket pool for HTTP requests
-    pool = socketpool.SocketPool(wifi.radio)
-    
-    # Inisialisasi objek requests
-    requests_session = adafruit_requests.Session(pool, None)
-    
-    try:
-        # Send DELETE request to delete data
-        response = requests_session.delete(url, headers=headers)
-        print(f"Response status: {response.status_code}")
-        print(f"Response text: {response.text}")
-        response.close()
-    except Exception as e:
-        print(f"Error deleting data: {e}")
 
 # Fungsi untuk setup Wi-Fi
 def wifi_setup():
@@ -195,6 +155,3 @@ def wifi_setup():
     else:
         print("Koneksi berhasil dengan konfigurasi baru!")
         time.sleep(2)
-
-connect_wifi()
-send_attendance_data(1)
