@@ -1,104 +1,208 @@
-from wifi_pi import wifi_setup, connect_wifi, load_wifi_config, is_wifi_connected
-from buzzer import beep
-from bluetooth_CL import configure_bluetooth, send_at_command, check_bluetooth_status, uart  # Pastikan uart ada di sini
-from oled import init_display, display_text, display_centered_text, clear_display, display_image, group, display
-from fingerprint import enroll_fingerprint, search_fingerprint, remove_fingerprint, remove_all_fingerprints, finger, search_fingerprint_noBT
+import uasyncio as asyncio
+import network
+from tft import phone_menu, display_clear, home
+from audio import beep, thanks, bye
+import aioble
+import bluetooth
+from machine import Pin
+from fingerprint import (
+    enroll_fingerprint,
+    match_fingerprint,
+    remove_fingerprint,
+    clear_all_fingerprints,
+    finger,
+)
 import time
+# Konfigurasi LED indikator
+# UUID untuk layanan dan karakteristik
+SERVICE_UUID = bluetooth.UUID("90D3D001-C950-4DD6-9410-2B7AEB1DD7D8")
+RECV_CHAR_UUID = bluetooth.UUID("90D3D002-C950-4DD6-9410-2B7AEB1DD7D8")
 
-# Memuat konfigurasi Wi-Fi
-is_wifi_connected()
-connect_wifi()
+# Interval advertising dalam mikrodetik
+_ADV_INTERVAL_MS = 250_000
 
-clear_display(group)
-display_centered_text(display, group, text="setup bluetooth...", wrap_at=16)
-configure_bluetooth()  # Fungsi konfigurasi bluetooth dari bluetooth_CL
-time.sleep(1)
+# Membuat layanan BLE custom
+ble_service = aioble.Service(SERVICE_UUID)
+recv_char = aioble.Characteristic(
+    ble_service, RECV_CHAR_UUID, write=True, notify=True, capture=True
+)
+aioble.register_services(ble_service)
 
-while True:
-    beep(1, 0.1)
-    while not check_bluetooth_status():
-        search_fingerprint_noBT()
-    
-    while check_bluetooth_status():
-        clear_display(group)
-        display_text(display, group, text=("1.Register\n 2.Matchmaking\n 3.Remove\n 4.Clear All\n 5.Connect Wifi"), wrap_at=16)
-        print("1. Register")
-        print("2. Matchmaking")
-        print("3. Remove")
-        print("4. Clear All")
-        print("5. Connect Wifi")
+# Variabel untuk menyimpan status koneksi dan tugas
+connected_device = None
+wait_for_write_task = None
+
+# Konfigurasi Wi-Fi
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+
+async def is_wifi_connected():
+    """Memeriksa koneksi Wi-Fi."""
+    return wlan.isconnected()
+
+async def load_wifi():
+    """Membaca konfigurasi Wi-Fi dari file."""
+    try:
+        with open('wifi_config.txt', 'r') as f:
+            content = f.read().strip()
+            ssid, password = content.split(':')
+            return ssid, password
+    except OSError:
+        print("Tidak ada konfigurasi Wi-Fi ditemukan.")
+        return None, None
+
+async def save_wifi_config(ssid, password):
+    """Menyimpan konfigurasi Wi-Fi ke file."""
+    with open('wifi_config.txt', 'w') as f:
+        f.write(f"{ssid}:{password}")
+    print("Konfigurasi Wi-Fi disimpan.")
+
+async def connect_wifi(ssid=None, password=None):
+    """Menghubungkan ke Wi-Fi."""
+    stored_ssid, stored_password = await load_wifi()
+    ssid = ssid or stored_ssid
+    password = password or stored_password
+
+    if not ssid or not password:
+        print("Konfigurasi Wi-Fi tidak lengkap.")
+        return False
+
+    wlan.connect(ssid, password)
+    for _ in range(10):  # Tunggu maksimal 10 detik
+        if wlan.isconnected():
+            print(f"Wi-Fi terkoneksi: {ssid}")
+            return True
+        await asyncio.sleep(1)
+
+    print("Koneksi Wi-Fi gagal.")
+    return False
+
+async def match_fingerprint_no_bt(timeout_ms=10000):
+    """Pencocokan sidik jari tanpa BLE dengan timeout."""
+    print("Place your finger on the sensor...")
+    start_time = time.ticks_ms()
+
+    while not finger.readImage():
+        if connected_device is not None:
+            print("BLE connected, exiting fingerprint check.")
+            return
         
-        # Tunggu sampai ada data yang diterima di UART
-        choice = ""
-        while not uart.in_waiting and check_bluetooth_status():
-            is_wifi_connected()
-            time.sleep(0.1)  # Menunggu input dari UART
+        # Periksa timeout
+        if time.ticks_diff(time.ticks_ms(), start_time) > timeout_ms:
+            print("Timeout: No fingerprint detected.")
+            return
         
-        # Pastikan ada data yang diterima sebelum mencoba membaca
-        if uart.in_waiting:
-            choice = uart.read().decode('utf-8').strip()
-
+        await asyncio.sleep(0.1)  # Hindari blocking dengan delay kecil
+    beep()
+    try:
+        finger.convertImage(0x01)
+        position, accuracy = finger.searchTemplate()
+        if position >= 0:
+            thanks()
+            print(f"Fingerprint matched at position {position} with accuracy {accuracy}")
         else:
-            print("Tidak ada data yang diterima dari UART.")
-            continue  # Kembali ke menu atau beri tahu pengguna
-        
-        
-        # Cek apakah Bluetooth terputus setelah memasuki menu
-        if not check_bluetooth_status():
-            print("Koneksi Bluetooth terputus! Kembali ke menu awal.")
-            clear_display(group)
-            display_centered_text(display, group, text="Bluetooth terputus, kembali ke menu...", wrap_at=16)
-            time.sleep(2)
-            break  # Kembali ke loop awal untuk pengecekan Bluetooth
+            print("No matching fingerprint found.")
+            bye()
+    except Exception as e:
+        print(f"Error during fingerprint matching: {e}")
+        print("Skipping this fingerprint attempt.")
+        bye()
 
-        if choice == "1":
-            beep(1, 0.1)
-            print("Masukkan ID...")
-            clear_display(group)
-            display_centered_text(display, group, text="Masukkan ID...", wrap_at=20)
-            while not uart.in_waiting and check_bluetooth_status():
-                time.sleep(0.1)
-            if uart.in_waiting:
-                location = uart.read().decode('utf-8').strip()
-                if location.isdigit():
-                    location = int(location)
-                    enroll_fingerprint(location)
+async def peripheral_task():
+    """Tugas BLE peripheral untuk advertising."""
+    global connected_device
+    while True:  # Loop terus-menerus untuk memulai ulang advertising
+        print("Mulai Advertising BLE...")
+        async with await aioble.advertise(
+            _ADV_INTERVAL_MS, name="PicoW-BLE", services=[SERVICE_UUID]
+        ) as connection:
+            print(f"Koneksi dari perangkat: {connection.device}")
+            connected_device = connection.device
+            try:
+                await connection.disconnected()  # Tunggu hingga perangkat terputus
+            except Exception as e:
+                print(f"Error during BLE connection: {e}")
+            finally:
+                print("Perangkat terputus.")
+                connected_device = None
+
+async def wait_for_write():
+    """Tugas menangani data yang dikirim oleh klien melalui BLE."""
+    while connected_device is not None:  # Berhenti jika koneksi terputus
+        try:
+            connection, data = await recv_char.written(timeout_ms=5000)
+            if data:
+                command = data.decode("utf-8").strip()
+                print(f"Data diterima: {command}")
+                if command == "1":
+                    print("Masukkan ID...")
+                    id_input = (await recv_char.written())[1].decode("utf-8").strip()
+                    if id_input.isdigit():
+                        enroll_fingerprint(int(id_input))
+                elif command == "2":
+                    match_fingerprint()
+                elif command == "3":
+                    print("Masukkan ID...")
+                    id_input = (await recv_char.written())[1].decode("utf-8").strip()
+                    if id_input.isdigit():
+                        remove_fingerprint(int(id_input))
+                elif command == "4":
+                    clear_all_fingerprints()
+                elif command == "5":
+                    print("Connecting...")
+                    connect_wifi()
+                    break
                 else:
-                    print("Invalid ID!")
-            else:
-                print("Tidak ada data untuk ID!")
-                continue  # Kembali ke menu utama atau beri tahu pengguna
+                    print("Invalid command!")
+        except asyncio.TimeoutError:
+            print("Timeout menunggu data BLE.")
+        except Exception as e:
+            print(f"Error handling BLE data: {e}")
+        finally:
+            print("Tugas wait_for_write selesai.")
 
-        elif choice == "2":
-            beep(1, 0.1)
-            search_fingerprint()
-        elif choice == "3":
-            beep(1, 0.1)
-            print("Masukkan ID...")
-            while not uart.in_waiting and check_bluetooth_status():
-                time.sleep(0.1)
-            if uart.in_waiting:
-                location = uart.read().decode('utf-8').strip()
-                if location.isdigit():
-                    location = int(location)
-                    remove_fingerprint(location)
-                else:
-                    print("Invalid ID!")
-            else:
-                print("Tidak ada data untuk ID!")
-                continue  # Kembali ke menu utama atau beri tahu pengguna
+async def ble_task():
+    """Fungsi utama untuk BLE."""
+    global wait_for_write_task
 
-        elif choice == "4":
-            beep(1, 0.1)
-            remove_all_fingerprints()
-        elif choice == "5":
-            beep(1, 0.1)  # Suara notifikasi
-            if not wifi_setup():
-                print("kembali ke menu utama...")
-                clear_display(group)
-                display_centered_text(display, group, text="kembali ke menu...", wrap_at=16)
-                time.sleep(2)  # Tampilkan pesan selama 2 detik
-                continue  # Kembali ke menu utama jika Wi-Fi gagal
-        else:
-            beep(2, 0.1)
-            print("Pilihan tidak valid, coba lagi!")
+    asyncio.create_task(peripheral_task())
+
+    while True:
+        try:
+            if connected_device is None:
+                # Jika tidak terkoneksi BLE, jalankan pencocokan fingerprint tanpa BLE
+                if wait_for_write_task and not wait_for_write_task.done():
+                    wait_for_write_task.cancel()
+                home()
+                
+                await match_fingerprint_no_bt()
+            else:
+                # Jika terkoneksi BLE, jalankan `wait_for_write` jika belum berjalan
+                if wait_for_write_task is None or wait_for_write_task.done():
+                    wait_for_write_task = asyncio.create_task(wait_for_write())
+                phone_menu()
+
+            await asyncio.sleep(1)
+        except Exception as e:
+            print(f"Unhandled error in BLE task: {e}")
+            print("Continuing main loop...")
+
+home()
+load_wifi()
+
+async def main():
+    """Fungsi utama."""
+    try:
+        if not await connect_wifi():
+            print("Koneksi Wi-Fi gagal. Input melalui BLE diperlukan.")
+            await wait_for_write()  # Gunakan BLE untuk input Wi-Fi
+        await ble_task()
+    except Exception as e:
+        print(f"Unhandled exception in main(): {e}")
+        print("Restarting main loop...")
+        await main()  # Restart ulang jika terjadi kesalahan besar
+
+try:
+    asyncio.run(main())
+except Exception as e:
+    print(f"Exception saat menjalankan main(): {e}")

@@ -1,211 +1,110 @@
+from pyfingerprint import PyFingerprint
+import uasyncio as asyncio
+from machine import UART, Pin
 import time
-from buzzer import beep
-import board
-import busio
-from oled import init_display, display_text, display_centered_text, clear_display, display_image, display, group
-from adafruit_fingerprint import Adafruit_Fingerprint
-from bluetooth_CL import check_bluetooth_status
-from wifi_pi import send_attendance_data, is_wifi_connected
 
-# Initialize UART for communication with the fingerprint sensor
-uart2 = busio.UART(board.GP0, board.GP1, baudrate=57600)
+# Inisialisasi UART dan Fingerprint Sensor
+uart = UART(1, baudrate=57600, tx=Pin(8), rx=Pin(9))  # UART2 di ESP32
+finger = PyFingerprint(uart)
 
-# Create a fingerprint sensor instance
-finger = Adafruit_Fingerprint(uart2)
+# Fungsi untuk memverifikasi koneksi ke sensor
+def initialize_sensor():
+    try:
+        if finger.verifyPassword():
+            print("Fingerprint sensor initialized successfully.")
+        else:
+            print("Wrong password for fingerprint sensor.")
+            return False
+    except Exception as e:
+        print(f"Failed to initialize sensor: {e}")
+        return False
+    return True
 
-# Enroll a fingerprint with ID
+# Fungsi untuk mendaftarkan sidik jari
 def enroll_fingerprint(location):
-    message = f"Checking if ID {location} is in use..."
-    print(message)
-    clear_display(group)
-    display_centered_text(display, group, text=message, wrap_at=20)
-    
-    if finger.load_model(location) == 0:
-        beep(2, 0.1)
-        message = f"Error: ID {location} is already in use."
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        return
-
-    display_image(display, group, "scan.bmp")
-    while finger.get_image() != 0:  # Wait for finger placement
+    print("Step 1: Place your finger on the sensor...")
+    while not finger.readImage(location):
         pass
-    
-    display_image(display, group, "scanCheck.bmp")
-    beep(1, 0.1)
-    if finger.image_2_tz(1) != 0:
-        beep(2, 0.1)
-        message = "Error converting image!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        return
+    print("Fingerprint image captured.")
 
-    message = "Place the finger again..."
-    print(message)
-    clear_display(group)
-    display_centered_text(display, group, text=message, wrap_at=20)
-    time.sleep(1)
+    # Konversi gambar menjadi karakteristik di buffer 1
+    finger.convertImage(0x01)
+    print("Fingerprint image converted to characteristics.")
 
-    display_image(display, group, "scan.bmp")
-    while finger.get_image() != 0:
-        pass
-    
-    display_image(display, group, "scanCheck.bmp")
-    beep(1, 0.1)
-    if finger.image_2_tz(2) != 0:
-        beep(2, 0.1)
-        message = "Error converting image!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        return
-
-    if finger.create_model() != 0:
-        beep(2, 0.1)
-        message = "Error creating model!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        return
-
-    if finger.store_model(location) != 0:
-        beep(2, 0.1)
-        message = "Error storing model!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        return
-
-    if is_wifi_connected:
-        send_attendance_data(location)
-        time.sleep(2)
-    beep(2, 0.1)
-    message = f"Fingerprint enrolled at ID {location}!"
-    print(message)
-    clear_display(group)
-    display_centered_text(display, group, text=message, wrap_at=20)
-    time.sleep(2)
-
-# Search for a fingerprint
-def search_fingerprint():
-    display_image(display, group, "scan.bmp")
-    
-    while finger.get_image() != 0:
-        pass
-    
-    display_image(display, group, "scanCheck.bmp")
-    if finger.image_2_tz(1) != 0:
-        beep(2, 0.1)
-        message = "Error converting image!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        return
-
-    if finger.finger_search() == 0:
-        beep(1, 0.1)
-        message = f"ID {finger.finger_id} found!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        send_attendance_data(finger.finger_id)
-        time.sleep(2)
+    # Coba membuat model/template
+    if finger.createTemplate(location):
+        print("Fingerprint template created successfully.")
     else:
-        beep(2, 0.1)
-        message = "Fingerprint not found."
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
-        
-def search_fingerprint_noBT():
-    """
-    Cari sidik jari tanpa Bluetooth, menampilkan gambar statis pada OLED saat pencarian berlangsung.
-    """
-    # Tampilkan gambar tunggal (statis) selama pencarian sidik jari
-    display_image(display, group, "scan.bmp")
-
-    # Loop untuk mencari sidik jari
-    while finger.get_image() != 0:
-        #is_wifi_connected()
-        if check_bluetooth_status():
-            return
-        pass
-
-    # Tampilkan gambar memproses
-    display_image(display, group, "scanCheck.bmp")
-    beep(1, 0.1)
-    time.sleep(1)
-
-    # Konversi gambar ke template
-    if finger.image_2_tz(1) != 0:
-        message = "Error converting image!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        # Beep untuk kesalahan
-        beep(2, 0.1)  # Dua kali beep singkat
-        time.sleep(2)
+        print("Failed to create fingerprint template.")
         return
 
-    # Cari sidik jari di database
-    if finger.finger_search() == 0:  # 0 indicates success
-        message = f"ID {finger.finger_id} found!"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        # Beep untuk keberhasilan
-        beep(2, 0.1)  # Tiga kali beep singkat
-        send_attendance_data(finger.finger_id)  # kirim id
-        time.sleep(2)
-    else:
-        message = "Fingerprint not found."
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        # Beep untuk kesalahan
-        beep(2, 0.1)  # Dua kali beep singkat
-        time.sleep(2)
+    # Menyimpan template ke database di posisi kosong
+    position = finger.storeTemplate(location)
+    print(f"Fingerprint stored at position: {position}")
 
-# Delete a fingerprint by ID
+# Fungsi untuk mencocokkan sidik jari
+def match_fingerprint():
+    print("Step 1: Place your finger on the sensor...")
+    while not finger.readImage():
+        pass
+    print("Fingerprint image captured.")
+
+    # Konversi gambar ke buffer 1
+    finger.convertImage(0x01)
+
+    # Mencari template di database
+    position, accuracy = finger.searchTemplate()
+    if position >= 0:
+        print(f"Fingerprint matched at position {position} with accuracy {accuracy}")
+    else:
+        print("No matching fingerprint found.")
+
+# Fungsi untuk menghapus template sidik jari
 def remove_fingerprint(location):
-    if finger.delete_model(location) == 0:
-        beep(1, 0.1)
-        message = f"ID {location} has been removed"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        send_attendance_data(location)
-        time.sleep(2)
-    else:
-        beep(2, 0.1)
-        message = f"Error deleting ID {location}."
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
+    try:
+        if finger.deleteTemplate(location):
+            print(f"Fingerprint at position {position} removed successfully.")
+        else:
+            print("Failed to delete fingerprint.")
+    except Exception as e:
+        print(f"Error: {e}")
 
-# Delete all fingerprints
-def remove_all_fingerprints():
-    if finger.empty_library() == 0:
-        beep(1, 0.1)
-        message = "Fingerprint data cleared"
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
+# Fungsi untuk menghapus seluruh database sidik jari
+def clear_all_fingerprints():
+    try:
+        if finger.clearDatabase():
+            print("All fingerprints cleared successfully.")
+        else:
+            print("Failed to clear fingerprints.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+# Menu utama
+'''if __name__ == "__main__":
+    if not initialize_sensor():
+        print("Exiting program...")
     else:
-        beep(2, 0.1)
-        message = "Failed to clear all fingerprints."
-        print(message)
-        clear_display(group)
-        display_centered_text(display, group, text=message, wrap_at=20)
-        time.sleep(2)
+        while True:
+            print("\nChoose an option:")
+            print("1 - Enroll Fingerprint")
+            print("2 - Match Fingerprint")
+            print("3 - Delete Fingerprint")
+            print("4 - Clear All Fingerprints")
+            print("5 - Exit")
+
+            choice = input("Enter your choice: ").strip()
+            if choice == "1":
+                enroll_fingerprint()
+            elif choice == "2":
+                match_fingerprint()
+            elif choice == "3":
+                position = int(input("Enter position to delete (0-127): "))
+                remove_fingerprint(position)
+            elif choice == "4":
+                clear_all_fingerprints()
+            elif choice == "5":
+                print("Exiting program...")
+                break
+            else:
+                print("Invalid choice. Please try again.")'''
