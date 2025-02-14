@@ -1,164 +1,255 @@
-import time
+import tm1637
+import uasyncio as asyncio
 from machine import Pin, I2C
-#import terminalio
-import ssd1306
-import framebuf
+from ds1302 import DS1302
+from ssd1306 import SSD1306_I2C
+import time
+from font import Font
 import os
-import ustruct
+import re
+import framebuf
 
-# Initialize the display
-def init_display(width=128, height=64, sda_pin=16, scl_pin=17):
-    i2c = I2C(0, scl=Pin(scl_pin), sda=Pin(sda_pin))  # Initialize I2C bus
-    display = ssd1306.SSD1306_I2C(width, height, i2c)  # Initialize the display
-    return display
+# Inisialisasi TM1637 (7-segment)
+tm = tm1637.TM1637(clk=Pin(21), dio=Pin(20))
 
-display = init_display()
+# Inisialisasi DS1302 (RTC)
+clk_pin = Pin(5)
+dio_pin = Pin(4)
+rst_pin = Pin(3)
+rtc = DS1302(clk=clk_pin, dio=dio_pin, cs=rst_pin)
 
-# Function to invert all colors in the sprite palette
-def invert_image(data):
-    return bytearray(~b & 0xFF for b in data)
+# Inisialisasi I2C dan OLED
+i2c = I2C(1, scl=Pin(11), sda=Pin(10), freq=400000)
+display = SSD1306_I2C(128, 64, i2c)
 
-def flip_vertical(data, width, height):
-    """Flip the image data vertically."""
-    row_size = width // 8  # Bytes per row
-    flipped = bytearray(len(data))
-    for y in range(height):
-        for x in range(row_size):
-            flipped[y * row_size + x] = data[(height - 1 - y) * row_size + x]
-    return flipped
+f = Font(display)
 
-# Function to display the sprite animation on the display
-def display_image(display, bmp_path, x=0, y=0, scale_factor=1):
-    clear_display(display)
+# Variabel global untuk menyimpan animasi
+def cycle_images(animationName='fingerScan'):
+    """Memuat dan menampilkan gambar animasi secara bergiliran."""
+    images = []
+    folder = '/animation'  # Folder default
+
+    # Ambil file yang sesuai dengan pola dan urutkan berdasarkan angka
+    files = sorted(
+        [f for f in os.listdir(folder) if re.match(rf"^{animationName}\d+\.pbm$", f)],
+        key=lambda x: int(re.search(r'(\d+)', x).group(1))  # Urutkan berdasarkan angka di nama file
+    )
+
+    # Muat semua gambar ke dalam list
+    for file in files:
+        try:
+            with open(f'{folder}/{file}', 'rb') as g:
+                g.readline()  # Magic number
+                g.readline()  # Creator comment
+                g.readline()  # Dimensions
+                data = bytearray(g.read())
+            fbuf = framebuf.FrameBuffer(data, 64, 64, framebuf.MONO_HLSB)  # Sesuaikan ukuran
+            images.append(fbuf)
+        except Exception as e:
+            print(f"Gagal memuat {file}: {e}")
+
+    # Tampilkan gambar secara bergiliran
+    display.fill(0)
+    for img in images:
+        display.blit(img, 32, 0)
+        display.show()
+
+# Fungsi untuk menampilkan gambar .pbm pada layar OLED
+def display_image(file_name, x_pos=0, y_pos=0, scale_percent=100):
+    """Menampilkan gambar .pbm pada layar OLED dengan skala persentase"""
     try:
-        with open(bmp_path, "rb") as f:
-            f.seek(62)  # Skip BMP header
-            bmp_data = bytearray(f.read(512))  # Read 64x64 pixel data
+        with open(f"img/{file_name}.pbm", "rb") as g:
+            g.readline()  # Skip magic number (P4)
+            g.readline()  # Skip creator line
+            dimensions = g.readline()  # Read dimensions line
+            img_width, img_height = map(int, dimensions.split())
+
+            # Hitung faktor skala
+            scale_factor = scale_percent / 100.0
+            target_width = int(img_width * scale_factor)
+            target_height = int(img_height * scale_factor)
             
-            # Optional: Flip the image vertically
-            bmp_data = flip_vertical(bmp_data, 64, 64)
-            
-            # Invert the image if necessary
-            bmp_data = invert_image(bmp_data)
-            
-            # Resize image if scale_factor is different from 1
-            if scale_factor != 1:
-                bmp_data = resize_image(bmp_data, 64, 64, scale_factor)
-                width = int(64 * scale_factor)
-                height = int(64 * scale_factor)
-            else:
-                width, height = 64, 64
-            
-            # Load into framebuffer
-            fb = framebuf.FrameBuffer(bmp_data, width, height, framebuf.MONO_HLSB)
-            display.fill(0)
-            display.blit(fb, x, y)
+            # Pastikan ukuran gambar tidak lebih besar dari ukuran layar OLED
+            target_width = min(target_width, display.width - x_pos)
+            target_height = min(target_height, display.height - y_pos)
+
+            # Baca data gambar
+            data = bytearray(g.read())
+
+            # Proses gambar per baris
+            for y in range(target_height):
+                src_y = int(y / scale_factor)  # Sesuaikan baris gambar dengan skala
+                row_start = src_y * (img_width // 8)  # Hitung offset baris
+                row_end = row_start + (img_width // 8)
+                row = data[row_start:row_end]  # Ambil baris gambar
+                
+                for x in range(target_width):
+                    src_x = int(x / scale_factor)  # Sesuaikan kolom gambar dengan skala
+                    byte_idx = src_x // 8
+                    bit_idx = 7 - (src_x % 8)
+
+                    # Ambil nilai bit dari gambar monokrom
+                    if row[byte_idx] & (1 << bit_idx):
+                        display.pixel(x_pos + x, y_pos + y, 1)  # Set piksel ke 1 (hitam)
+                    else:
+                        display.pixel(x_pos + x, y_pos + y, 0)  # Set piksel ke 0 (putih)
+
             display.show()
     except Exception as e:
-        print("Error:", e)
+        print(f"Gagal menampilkan gambar {file_name}: {e}")
 
+def interact_txt(text, screen_width=128, screen_height=64, font_size=16, max_length=15, total_max=48, truncate_at=44, line_spacing=16):
+    """Menampilkan teks di tengah layar OLED dengan dukungan enter ('\\n'), dan truncation jika mencapai baris ke-4."""
 
-# Function to display the sprite animation on the display
-def resize_image(data, original_width, original_height, scale_factor):
-    """Resize the image by a scale factor."""
-    new_width = int(original_width * scale_factor)
-    new_height = int(original_height * scale_factor)
-    
-    # Pastikan lebar dan tinggi adalah kelipatan 8
-    new_width = (new_width + 7) // 8 * 8
-    new_height = (new_height + 7) // 8 * 8
-    
-    resized_data = bytearray((new_width * new_height) // 8)  # Ukuran data baru berdasarkan lebar dan tinggi baru
-    
-    # Resize logic: iterate through each pixel of the new image
-    for y in range(new_height):
-        for x in range(new_width):
-            original_x = int(x / scale_factor)
-            original_y = int(y / scale_factor)
-            original_index = (original_y * (original_width // 8)) + (original_x // 8)
-            resized_index = (y * (new_width // 8)) + (x // 8)
-            bit_offset = 7 - (x % 8)
-            
-            # Pastikan kita mengakses indeks yang valid
-            if original_index < len(data):  # Cek agar indeks tidak melebihi panjang data
-                if (data[original_index] & (1 << (7 - original_x % 8))):
-                    resized_data[resized_index] |= (1 << bit_offset)
-    
-    return resized_data
+    text = text.strip()  # Hapus spasi berlebih di awal & akhir
 
+    # Jika teks lebih dari total_max, potong dengan '..'
+    if len(text) > total_max:
+        text = text[:truncate_at] + "..."
 
-# Clear display content
-def clear_display(display):
-    """Clear all content on the display."""
-    display.fill(0)  # Fill the screen with black
-    display.show()
-
-# Word wrap function
-def word_wrap(text, max_chars):
-    """Split text into lines with a maximum number of characters per line."""
-    words = text.split(" ")
     lines = []
     current_line = ""
 
-    for word in words:
-        if len(current_line) + len(word) + 1 <= max_chars:
-            current_line += (word + " ")
-        else:
+    for char in text:
+        if char == "\n":  # Jika ada enter, pindahkan ke baris berikutnya
             lines.append(current_line.strip())
-            current_line = word + " "
+            current_line = ""
+        elif len(current_line) < max_length:
+            current_line += char
+        else:
+            lines.append(current_line.strip())  # Tambahkan baris ke daftar
+            current_line = char  # Mulai baris baru dengan karakter yang tersisa
+
     if current_line:
-        lines.append(current_line.strip())
+        lines.append(current_line.strip())  # Tambahkan sisa teks ke baris baru
 
-    return lines
+    # Jika ada lebih dari 3 baris (artinya ada baris ke-4), potong baris terakhir dengan max_length
+    if len(lines) > 3:
+        lines[2] = lines[2][:max_length-3] + "..."
 
-# Display text on the display screen
-def display_text(display, text="", wrap_at=20):
-    """
-    Display word-wrapped text on the display.
-    :param display: Display object
-    :param text: Text to display
-    :param wrap_at: Number of characters per line before wrapping
-    """
-    clear_display(display)
+    # Pastikan maksimal hanya ada 3 baris
+    lines = lines[:3]
 
-    lines = word_wrap(text, wrap_at)
-    line_height = 10  # Approximate line height
-    y_offset = 0
+    # Hitung posisi Y agar tetap di tengah
+    total_text_height = len(lines) * line_spacing
+    start_y = (screen_height - total_text_height) // 2
 
-    for line in lines:
-        if y_offset + line_height > display.height:
-            break
-        display.text(line, 0, y_offset)
-        y_offset += line_height
-
-# Display text centered on the display screen
-def display_centered_text(display, color=0xFFFFFF, text="", wrap_at=20):
-    """
-    Display word-wrapped text centered on the display.
-    :param display: Display object
-    :param text: Text to display
-    :param wrap_at: Number of characters per line before wrapping
-    """
-    #clear_display(display)
-    clear_display(display)
-    # Wrap the text based on the provided wrap_at
-    lines = word_wrap(text, wrap_at)
+    display.fill(0)  # Bersihkan layar sebelum menampilkan teks
+    for i, line in enumerate(lines):
+        text_width = len(line) * 8  # Asumsi 8px per karakter
+        x = (screen_width - text_width) // 2  # Posisi X agar rata tengah
+        f.text(line, x, start_y + (i * line_spacing), font_size)
     
-    # Estimate font height and width per character for proper text positioning
-    line_height = 10  # Assumed line height for default font
-    total_height = len(lines) * line_height
-    y_offset = max(0, (display.height - total_height) // 2)  # Center vertically
-
-    for line in lines:
-        # Center the text horizontally
-        text_width = len(line) * 6  # Approximate width for each character
-        x_offset = (display.width - text_width) // 2
-        
-        # Display the text
-        display.text(line, x_offset, y_offset)
-        y_offset += line_height
     display.show()
-        
-# Test the function
-display_image(display, "scanCheck.bmp", 0, 0, scale_factor=0.4)  # Adjust scale_factor for resizing
-display_centered_text(display, text="test.")
+
+# Contoh penggunaan (memicu truncation di baris ke-4)
+interact_txt("Baris pertama\nBaris kedua\nBaris ketigakjfaklsdjfklajklfdj")
+
+# Fungsi untuk menampilkan teks dengan pembungkusan huruf demi huruf
+def display_text(text, x, y):
+    """Menampilkan teks dengan pembungkusan huruf demi huruf berdasarkan lebar aktual karakter."""
+    max_width = 128 - x  # Sesuaikan lebar berdasarkan posisi x
+    current_line = ""
+    current_width = 0
+    lines = []
+
+    for char in text:
+        # Hitung lebar aktual karakter termasuk spasi
+        char_width = 7  # Lebar font default untuk SSD1306 (bisa disesuaikan jika berbeda)
+        char_spacing = 1  # Spasi antar karakter
+        total_char_width = char_width + char_spacing
+
+        # Periksa apakah karakter berikutnya masih muat di baris ini
+        if current_width + total_char_width <= max_width:
+            current_line += char
+            current_width += total_char_width
+        else:
+            # Simpan baris saat ini dan mulai baris baru
+            lines.append(current_line)
+            current_line = char
+            current_width = total_char_width
+
+    if current_line:
+        lines.append(current_line)  # Simpan baris terakhir
+
+    # Tampilkan setiap baris pada layar
+    for i, line in enumerate(lines):
+        display.text(line, x, y + i * 10)  # Jarak antar baris 10 piksel
+    display.show()
+
+def check():
+    display_image("check", 30, 0, 100)
+
+# Fungsi untuk menampilkan gambar dengan tanda silang
+def cross():
+    display_image("cross", 30, 0, 100)
+
+# Fungsi untuk menampilkan menu
+def menu():
+    display_image("menu", 0, 0, 100)
+
+prev_time_clock = None
+prev_time_oled = None
+
+# Fungsi untuk menampilkan halaman utama (OLED)
+def home():
+    global prev_time_oled
+
+    current_time = rtc.date_time()  # Ambil waktu dari RTC
+    tahun, bulan, tanggal = current_time[0], current_time[1], current_time[2]
+
+    # Konversi angka hari ke nama hari
+    hari_list = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+    hari = current_time[3] % 7  # Hari dalam RTC DS1302 biasanya ada di indeks 6
+    nama_hari = hari_list[hari]  # Ambil langsung dari list
+
+    # Cek apakah ada perubahan dari prev_time_oled (Tanggal)
+    if prev_time_oled is None or prev_time_oled != (tahun, bulan, tanggal):
+        display.fill(0)
+        f.text(nama_hari, 0, 0, 16)  # Menampilkan nama hari
+        f.text("{:02}-{:02}-{:02}".format(tanggal, bulan, tahun), 0, 19, 24)  # Format Tanggal-Bulan-Tahun
+        f.text("Masuk", 0, 50, 16)  # Tampilkan teks 'Masuk'
+
+        display.show()  # Tampilkan hasil di layar
+        prev_time_oled = (tahun, bulan, tanggal)  # Simpan waktu terbaru ke prev_time_oled
+    else:
+        display.fill(0)
+        f.text(nama_hari, 0, 0, 16)  # Menampilkan nama hari
+        f.text("{:02}-{:02}-{:02}".format(tanggal, bulan, tahun), 0, 19, 24)  # Format Tanggal-Bulan-Tahun
+        f.text("Masuk", 0, 50, 16)  # Tampilkan teks 'Masuk'
+        display.show()
+
+# Fungsi untuk memperbarui display TM1637
+async def clock():
+    global prev_time_clock
+
+    while True:  # Loop agar terus berjalan
+        # Ambil waktu dari RTC
+        current_time = rtc.date_time()
+        jam, menit, detik = current_time[4], current_time[5], current_time[6]
+
+        # Perbarui TM1637 hanya jika waktu jam, menit, detik berubah
+        if prev_time_clock is None or (jam, menit, detik) != prev_time_clock:
+            tm.numbers(jam, menit)  # Perbarui tampilan TM1637
+            print("Waktu sekarang: {:02}:{:02}:{:02}".format(jam, menit, detik))  # Tampilkan ke serial monitor
+            prev_time_clock = (jam, menit, detik)  # Simpan waktu terbaru ke prev_time_clock
+
+        await asyncio.sleep(1)  # Tunggu 1 detik sebelum loop selanjutnya
+
+async def main():
+    while True:
+        # Jalankan clock display dan oled sebagai task terpisah
+        task1 = asyncio.create_task(clock())  
+        task2 = asyncio.create_task(home())  
+
+        # Tunggu kedua task selesai
+        await task1  
+        await task2  
+        await asyncio.sleep(0.5)  # Menunggu sejenak agar proses bisa berjalan dengan lancar
+
+# Jalankan event loop utama
+#asyncio.run(main())
+#home()
+#check()
+#cycle_images()

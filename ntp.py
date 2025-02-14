@@ -20,8 +20,10 @@ print("Connected to NTP server")
 current_time = ntp.datetime
 print("Current time (from NTP):", current_time)
 
+'''
 # Menunggu dan menampilkan waktu terus-menerus
 while True:
     current_time = ntp.datetime
     print(f"Current Time: {current_time}")
     time.sleep(2)
+'''

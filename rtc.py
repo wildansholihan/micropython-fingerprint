@@ -9,6 +9,7 @@ rst_pin = Pin(3)  # Bisa diganti sesuai pin yang digunakan
 
 ds = DS1302(clk=clk_pin, dio=dio_pin, cs=rst_pin)
 
+'''
 # Fungsi untuk menampilkan waktu setiap detik
 while True:
     current_time = ds.date_time()  # Mengambil waktu saat ini
@@ -16,3 +17,4 @@ while True:
         current_time[0], current_time[1], current_time[2],
         current_time[4], current_time[5], current_time[6]))
     time.sleep(1)  # Menunggu 1 detik sebelum memperbarui waktu lagi
+'''

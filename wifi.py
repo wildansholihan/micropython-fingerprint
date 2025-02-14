@@ -147,4 +147,4 @@ def wifi_setup():
     except Exception as e:
         print(f"Error membaca data BLE: {e}")
         
-wifi_setup()
+# wifi_setup()
