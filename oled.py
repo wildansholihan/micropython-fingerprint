@@ -143,9 +143,6 @@ def interact_txt(text, screen_width=128, screen_height=64, font_size=16, max_len
     
     display.show()
 
-# Contoh penggunaan (memicu truncation di baris ke-4)
-interact_txt("Baris pertama\nBaris kedua\nBaris ketigakjfaklsdjfklajklfdj")
-
 # Fungsi untuk menampilkan teks dengan pembungkusan huruf demi huruf
 def display_text(text, x, y):
     """Menampilkan teks dengan pembungkusan huruf demi huruf berdasarkan lebar aktual karakter."""
@@ -197,27 +194,43 @@ def home():
     global prev_time_oled
 
     current_time = rtc.date_time()  # Ambil waktu dari RTC
-    tahun, bulan, tanggal = current_time[0], current_time[1], current_time[2]
+    tahun, bulan, tanggal, hari, jam = current_time[0], current_time[1], current_time[2], current_time[3], current_time[4]
 
     # Konversi angka hari ke nama hari
     hari_list = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
-    hari = current_time[3] % 7  # Hari dalam RTC DS1302 biasanya ada di indeks 6
-    nama_hari = hari_list[hari]  # Ambil langsung dari list
+    nama_hari = hari_list[hari % 7]  # Karena RTC DS1302 biasanya memiliki indeks 6 untuk hari
+
+    # Konversi angka bulan ke nama bulan
+    bulan_list = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+    nama_bulan = bulan_list[bulan - 1]  # Karena bulan dimulai dari 1, kita kurangi 1 untuk indeks
+
+    # Tentukan status berdasarkan jam
+    if jam < 15:
+        status = "Masuk"
+    elif jam < 18:
+        status = "Pulang"
+    else:
+        status = "Lembur"
 
     # Cek apakah ada perubahan dari prev_time_oled (Tanggal)
     if prev_time_oled is None or prev_time_oled != (tahun, bulan, tanggal):
         display.fill(0)
         f.text(nama_hari, 0, 0, 16)  # Menampilkan nama hari
-        f.text("{:02}-{:02}-{:02}".format(tanggal, bulan, tahun), 0, 19, 24)  # Format Tanggal-Bulan-Tahun
-        f.text("Masuk", 0, 50, 16)  # Tampilkan teks 'Masuk'
+        f.text("{:02}".format(tanggal), 0, 19, 24)  # Tanggal (2 digit)
+        f.text(nama_bulan, 32, 19, 24)  # Bulan (singkatan 3 huruf)
+        f.text("{:04}".format(tahun), 76, 19, 24)  # Tahun (4 digit)
+        f.text(status, 0, 49, 16)  # Tampilkan status (Masuk/Pulang/Lembur)
 
         display.show()  # Tampilkan hasil di layar
         prev_time_oled = (tahun, bulan, tanggal)  # Simpan waktu terbaru ke prev_time_oled
     else:
         display.fill(0)
         f.text(nama_hari, 0, 0, 16)  # Menampilkan nama hari
-        f.text("{:02}-{:02}-{:02}".format(tanggal, bulan, tahun), 0, 19, 24)  # Format Tanggal-Bulan-Tahun
-        f.text("Masuk", 0, 50, 16)  # Tampilkan teks 'Masuk'
+        f.text("{:02}".format(tanggal), 0, 19, 24)  # Tanggal (2 digit)
+        f.text(nama_bulan, 32, 19, 24)  # Bulan (singkatan 3 huruf)
+        f.text("{:04}".format(tahun), 76, 19, 24)  # Tahun (4 digit)
+        f.text(status, 0, 49, 16)  # Tampilkan status (Masuk/Pulang/Lembur)
+
         display.show()
 
 # Fungsi untuk memperbarui display TM1637

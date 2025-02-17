@@ -3,7 +3,17 @@ import uasyncio as asyncio
 import network
 import ntptime
 from audio import beep, thanks, bye
-from oled import cycle_images, check, cross, home, menu, display, clock, rtc
+from oled import (
+    cycle_images,
+    check,
+    cross,
+    home,
+    menu,
+    display,
+    clock,
+    rtc,
+    interact_txt,
+)
 import aioble
 import bluetooth
 from machine import Pin
@@ -16,6 +26,7 @@ from fingerprint import (
     initialize_sensor
 )
 import time
+from data import create_log
 #----------------------------------SETUP-------------------------------------------
 # UUID untuk layanan dan karakteristik
 SERVICE_UUID = bluetooth.UUID("90D3D001-C950-4DD6-9410-2B7AEB1DD7D8")
@@ -183,18 +194,25 @@ async def matchmaking_no_ble():
         position, accuracy = finger.searchTemplate()
 
         if position >= 0:
-            check()
-            thanks()  # Indikator sidik jari cocok
             print(f"Fingerprint matched at position {position} with accuracy {accuracy}")
+            create_log(position)
+            check()
+            thanks()
+            interact_txt("terima kasih!")
+            await asyncio.sleep(2)
         else:
             print("No matching fingerprint found.")
             cross()
-            bye()  # Indikator sidik jari tidak cocok
+            bye()
+            interact_txt("Sidik jari\n tidak dikenali!")
+            await asyncio.sleep(2)
     except Exception as e:
         print(f"Error during fingerprint matching: {e}")
         print("Skipping this fingerprint attempt.")
         cross()
         bye()  # Penanganan error, keluar dari pencocokan
+        interact_txt("Sidik jari\n tidak dikenali!")
+        await asyncio.sleep(2)
 
 async def ble_ads():
     """Tugas BLE peripheral untuk advertising."""
@@ -229,16 +247,19 @@ async def ble_respons():
 
             if command == "1":
                 print("Masukkan ID...")
+                interact_txt("Masukkan ID:")
                 id_data = await recv_char.written()
                 if id_data:
                     id_input = id_data[1].decode("utf-8").strip()
                     if id_input.isdigit():
                         print("Masukkan NIK...")
+                        interact_txt("Masukkan NIK:")
                         nik_data = await recv_char.written()
                         if nik_data:
                             nik_input = nik_data[1].decode("utf-8").strip()
                             
                             print("Masukkan Nama...")
+                            interact_txt("Masukkan Nama:")
                             name_data = await recv_char.written()
                             if name_data:
                                 name_input = name_data[1].decode("utf-8").strip()
@@ -260,6 +281,7 @@ async def ble_respons():
 
             elif command == "3":
                 print("Masukkan ID...")
+                interact_txt("Masukkan ID\n untuk dihapus:")
                 id_data = await recv_char.written()
                 if id_data:
                     id_input = id_data[1].decode("utf-8").strip()
@@ -271,7 +293,20 @@ async def ble_respons():
                     print("Timeout saat menunggu ID.")
 
             elif command == "4":
-                await clear_all_fingerprints()
+                while True:
+                    print("Konfirmasi hapus semua sidik jari? (y/n)")
+                    confirm_data = await recv_char.written()
+                    if confirm_data:
+                        confirm_input = confirm_data[1].decode("utf-8").strip().lower()
+                        if confirm_input == "y":
+                            await clear_all_fingerprints(True)
+                            break  # Keluar dari loop setelah konfirmasi "y"
+                        elif confirm_input == "n":
+                            print("Operasi dibatalkan.")
+                            break  # Keluar dari loop jika pengguna membatalkan
+                        else:
+                            print("Input tidak valid. Silakan masukkan 'y' untuk ya atau 'n' untuk tidak.")
+
 
             elif command == "5":
                 print("Connecting...")
