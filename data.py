@@ -2,8 +2,8 @@ import json
 import time
 from oled import rtc
 
-DB_FILE = '/files/attendance.json'  # Sesuaikan path jika perlu
-LOG_FILE = '/files/log.json' # LOkasi Log File
+DB_FILE = '/files/user.json'  # Sesuaikan path jika perlu
+LOG_FILE = '/files/attendance.json' # LOkasi Log File untuk attendance
 
 def check_database():
     try:
@@ -30,14 +30,20 @@ def check_database():
 check_database()
 
 
-def create_data(new_entry):
+def register_id(new_id):
     try:
         with open(DB_FILE, 'r') as db:
             data = json.load(db)
     except (ValueError, FileNotFoundError):
         data = []
     
-    data.append(new_entry)
+    # Cek apakah ID sudah ada dalam database
+    if any(entry.get('id') == new_id for entry in data):
+        print(f"ID {new_id} sudah terdaftar.")
+        return
+    
+    # Tambahkan objek baru dengan format {"id": ID}
+    data.append({"id": new_id})
     
     with open(DB_FILE, 'w') as db:
         db.write("[\n")
@@ -47,8 +53,8 @@ def create_data(new_entry):
             db.write(json.dumps(data[-1]) + "\n")
         db.write("]")
 
-def create_log(entry_id):
-    data = read_data()  # Ambil data dari attendance.json
+def log_attendance(entry_id):
+    data = read_data()  # Ambil data dari user.json
 
     # Cari entry secara manual (tanpa next())
     entry = None
@@ -58,9 +64,6 @@ def create_log(entry_id):
             break  # Langsung keluar jika ditemukan
 
     if entry is not None:  # Pastikan entry ditemukan
-        nama = entry.get('nama', 'Tidak Diketahui')
-        nik = entry.get('nik', 'Tidak Diketahui')
-
         # Ambil data log lama
         try:
             with open(LOG_FILE, 'r') as log:
@@ -68,12 +71,17 @@ def create_log(entry_id):
         except (ValueError, OSError):  # OSError untuk file tidak ditemukan
             log_data = []
 
-        # definisi variable waktu dan tanggal, diambil dari waktu rtc di oled.py
-        waktu = "{:02}:{:02}".format(rtc.date_time()[4], rtc.date_time()[5])
+        # Ambil waktu dan tanggal dari RTC
+        jam = rtc.date_time()[4]
+        menit = rtc.date_time()[5]
+        waktu = "{:02}:{:02}".format(jam, menit)
         tanggal = "{:02}-{:02}-{:04}".format(rtc.date_time()[2], rtc.date_time()[1], rtc.date_time()[0])
-        
-        # tambahkan log baru
-        new_log = {"keterangan": "{} dengan id {}, dan nik {}, telah melakukan absensi pada jam {} tanggal {}!".format(nama, entry_id, nik, waktu, tanggal)}
+
+        # Tentukan deskripsi berdasarkan jam
+        desc = "masuk" if jam < 12 else "pulang"
+
+        # Tambahkan log baru dalam format key-value
+        new_log = {"desc": desc, "id": entry_id, "jam": waktu, "tanggal": tanggal}
         log_data.append(new_log)
 
         # Simpan kembali ke file log tanpa indent
@@ -87,7 +95,6 @@ def create_log(entry_id):
 
     else:
         print("ID {} tidak ditemukan dalam database!".format(entry_id))
-
 
 def read_data():
     try:
@@ -129,16 +136,3 @@ def clear_all_id():
     print("Mengosongkan data...")
     with open(DB_FILE, 'w') as db:
         db.write(json.dumps([]))
-    
-'''
-# Uji coba
-create_data({'id': 1, 'nik': 'GMI-002', 'nama': 'galuh', 'masuk': '11:13'})
-create_data({'id': 2, 'nik': 'GMI-001', 'nama': 'wildan', 'masuk': '12:20'})
-print(read_data())
-
-update_data(1, {'id': 1, 'nik': 'GMI-004', 'nama': 'wildan', 'masuk': '12:20'})
-print(read_data())
-
-delete_data(2)
-print(read_data())
-'''

@@ -176,15 +176,22 @@ def display_text(text, x, y):
     display.show()
 
 def check():
+    display.fill(0)
     display_image("check", 30, 0, 100)
 
 # Fungsi untuk menampilkan gambar dengan tanda silang
 def cross():
+    display.fill(0)
     display_image("cross", 30, 0, 100)
 
 # Fungsi untuk menampilkan menu
 def menu():
+    display.fill(0)
     display_image("menu", 0, 0, 100)
+    
+def fingerScan():
+    display.fill(0)
+    display_image("fingerScan", 32, 0, 100)
 
 prev_time_clock = None
 prev_time_oled = None

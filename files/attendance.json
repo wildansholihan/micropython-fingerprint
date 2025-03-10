@@ -1,4 +1,18 @@
 [
-{"id": 89, "nik": "gmi_887", "nama": "wildan"},
-{"nama": "yudi", "id": 123, "nik": "gmi_88"}
+{"desc": "masuk", "id": 45, "jam": "08:40", "tanggal": "06-03-2025"},
+{"desc": "masuk", "id": 45, "tanggal": "06-03-2025", "jam": "08:41"},
+{"desc": "masuk", "id": 45, "jam": "08:41", "tanggal": "06-03-2025"},
+{"desc": "pulang", "id": 45, "tanggal": "06-03-2025", "jam": "08:56"},
+{"desc": "pulang", "id": 98, "jam": "17:43", "tanggal": "06-03-2025"},
+{"desc": "pulang", "id": 98, "tanggal": "06-03-2025", "jam": "17:44"},
+{"desc": "masuk", "id": 98, "jam": "09:59", "tanggal": "07-03-2025"},
+{"desc": "masuk", "id": 98, "tanggal": "07-03-2025", "jam": "10:02"},
+{"desc": "masuk", "id": 98, "jam": "10:58", "tanggal": "07-03-2025"},
+{"desc": "masuk", "id": 98, "tanggal": "07-03-2025", "jam": "11:15"},
+{"desc": "pulang", "id": 56, "jam": "17:07", "tanggal": "07-03-2025"},
+{"desc": "pulang", "id": 99, "tanggal": "07-03-2025", "jam": "17:08"},
+{"desc": "masuk", "id": 98, "jam": "10:41", "tanggal": "10-03-2025"},
+{"desc": "masuk", "id": 98, "tanggal": "10-03-2025", "jam": "10:41"},
+{"desc": "masuk", "id": 98, "jam": "10:44", "tanggal": "10-03-2025"},
+{"desc": "pulang", "id": 55, "tanggal": "10-03-2025", "jam": "13:21"}
 ]

@@ -2,7 +2,19 @@
 import uasyncio as asyncio
 import network
 import ntptime
-from audio import beep, thanks, bye
+from audio import (
+    beep,
+    thanks,
+    bye,
+    wificonn,
+    wificross,
+    again,
+    needinput,
+    touch,
+    cancelopt,
+    btconn,
+    notvalid
+)
 from oled import (
     cycle_images,
     check,
@@ -26,14 +38,14 @@ from fingerprint import (
     initialize_sensor
 )
 import time
-from data import create_log
+from data import log_attendance
 #----------------------------------SETUP-------------------------------------------
 # UUID untuk layanan dan karakteristik
 SERVICE_UUID = bluetooth.UUID("90D3D001-C950-4DD6-9410-2B7AEB1DD7D8")
 RECV_CHAR_UUID = bluetooth.UUID("90D3D002-C950-4DD6-9410-2B7AEB1DD7D8")
 
 # Interval advertising dalam mikrodetik
-_ADV_INTERVAL_MS = 250_000
+_ADV_INTERVAL_MS = 1_750_000
 
 # Membuat layanan BLE custom
 ble_service = aioble.Service(SERVICE_UUID)
@@ -47,7 +59,7 @@ led = Pin(26, Pin.OUT).value
 
 # Variabel untuk menyimpan status koneksi dan tugas
 connected_device = None
-ble_respons_task = None
+ble_menu_task = None
 matchmaking_task = None  # Menyimpan task matchmaking_no_ble
 
 # variable untuk mendeteksi apakah rtc sudah di adjust 1x menyesuaikan ntptime (realtime dari koneksi wifi)
@@ -118,6 +130,9 @@ async def connect_wifi(ssid=None, password=None):
     ssid = ssid or stored_ssid
     password = password or stored_password
     
+    beep()  # Suara indikator
+    cycle_images('wifiConnect') # animation
+    
     if ssid and password:
         print(f"Mencoba menghubungkan ke {ssid}...")
         wlan.connect(ssid, password)
@@ -125,16 +140,25 @@ async def connect_wifi(ssid=None, password=None):
         if wlan.isconnected():
             print(f"Berhasil terhubung ke {ssid}!")
             print("Alamat IP:", wlan.ifconfig()[0])
+            check()
+            wificonn()
+            interact_txt("wifi terkoneksi")
+            await asyncio.sleep(2)
             if is_rtc_adjust is None:
                 sync_rtc()
                 print("rtc telah disinkronkan dengan ntp!")
+            menu()
             return
 
         print("Koneksi gagal. Meminta SSID baru...")
+    cross()
+    wificross()
 
     # Meminta SSID baru jika koneksi gagal atau SSID/password tidak ada
     while True:
+        beep()  # Suara indikator
         print("Masukkan SSID baru:")
+        interact_txt("Masukkan SSID:")
         input_ssid = await recv_char.written()
         if input_ssid:
             ssid = input_ssid[1].decode("utf-8").strip()
@@ -142,7 +166,9 @@ async def connect_wifi(ssid=None, password=None):
 
     # Meminta password baru
     while True:
+        beep()  # Suara indikator
         print("Masukkan password:")
+        interact_txt("Masukkan\npassword:")
         input_pass = await recv_char.written()
         if input_pass:
             password = input_pass[1].decode("utf-8").strip()
@@ -156,6 +182,8 @@ async def connect_wifi(ssid=None, password=None):
     # Coba koneksi ulang dengan konfigurasi terbaru
     print(f"Mencoba menghubungkan ke {ssid}...")
     wlan.connect(ssid, password)
+    beep()  # Suara indikator
+    cycle_images('wifiConnect') # animation
 
     timeout = 10
     while not wlan.isconnected() and timeout > 0:
@@ -166,165 +194,24 @@ async def connect_wifi(ssid=None, password=None):
     if wlan.isconnected():
         print(f"Koneksi berhasil dengan {ssid}!")
         print("Alamat IP:", wlan.ifconfig()[0])
+        cycle_images('wifiConnect') # animation
+        check()
+        wificonn()
+        interact_txt("wifi terkoneksi")
+        await asyncio.sleep(2)
+        menu()
         if is_rtc_adjust is None:
             sync_rtc()
             print("rtc telah disinkronkan dengan ntp!")
     else:
+        cycle_images('wifiConnect') # animation
+        cross()
+        wificross()
+        interact_txt("gagal terhubung")
+        await asyncio.sleep(2)
+        menu()
         print("Koneksi masih gagal.")
     
-
-async def matchmaking_no_ble():
-    """Pencocokan sidik jari tanpa BLE dengan timeout."""
-    print("Place your finger on the sensor...")
-    home()
-    # Tunggu hingga sidik jari terdeteksi, tidak terus menerus
-    while True:
-        # Cek apakah sidik jari dapat dibaca
-        if finger.readImage():
-            break
-
-        await asyncio.sleep(1)
-
-    beep()  # Suara indikator
-    cycle_images() # animation
-        
-    try:
-        # Proses konversi dan pencocokan sidik jari
-        finger.convertImage(0x01)
-        position, accuracy = finger.searchTemplate()
-
-        if position >= 0:
-            print(f"Fingerprint matched at position {position} with accuracy {accuracy}")
-            create_log(position)
-            check()
-            thanks()
-            interact_txt("terima kasih!")
-            await asyncio.sleep(2)
-        else:
-            print("No matching fingerprint found.")
-            cross()
-            bye()
-            interact_txt("Sidik jari\n tidak dikenali!")
-            await asyncio.sleep(2)
-    except Exception as e:
-        print(f"Error during fingerprint matching: {e}")
-        print("Skipping this fingerprint attempt.")
-        cross()
-        bye()  # Penanganan error, keluar dari pencocokan
-        interact_txt("Sidik jari\n tidak dikenali!")
-        await asyncio.sleep(2)
-
-async def ble_ads():
-    """Tugas BLE peripheral untuk advertising."""
-    home()
-    global connected_device
-    while True:  # Loop terus-menerus untuk memulai ulang advertising
-        print("Mulai Advertising BLE...")
-        async with await aioble.advertise(
-            _ADV_INTERVAL_MS, name="PicoW-BLE", services=[SERVICE_UUID]
-        ) as connection:
-            print(f"Koneksi dari perangkat: {connection.device}")
-            connected_device = connection.device
-            try:
-                await connection.disconnected()  # Tunggu hingga perangkat terputus
-            except Exception as e:
-                print(f"Error during BLE connection: {e}")
-            finally:
-                print("Perangkat terputus.")
-                connected_device = None
-
-async def ble_respons():
-    """Tugas menangani data yang dikirim oleh klien melalui BLE."""
-    menu()
-    while connected_device is not None:  # Berhenti jika koneksi terputus
-        try:
-            connection, data = await recv_char.written()
-            if not data:
-                await asyncio.sleep(1)  # Jika tidak ada data, lanjut loop
-
-            command = data.decode("utf-8").strip()
-            print(f"Data diterima: {command}")
-
-            if command == "1":
-                print("Masukkan ID...")
-                interact_txt("Masukkan ID:")
-                id_data = await recv_char.written()
-                if id_data:
-                    id_input = id_data[1].decode("utf-8").strip()
-                    if id_input.isdigit():
-                        print("Masukkan NIK...")
-                        interact_txt("Masukkan NIK:")
-                        nik_data = await recv_char.written()
-                        if nik_data:
-                            nik_input = nik_data[1].decode("utf-8").strip()
-                            
-                            print("Masukkan Nama...")
-                            interact_txt("Masukkan Nama:")
-                            name_data = await recv_char.written()
-                            if name_data:
-                                name_input = name_data[1].decode("utf-8").strip()
-
-                                # ✅ Panggil fungsi dengan 3 argumen
-                                await enroll_fingerprint(int(id_input), nik_input, name_input)
-                            else:
-                                print("Timeout saat menunggu Nama.")
-                        else:
-                            print("Timeout saat menunggu NIK.")
-                    else:
-                        print("ID tidak valid.")
-                else:
-                    print("Timeout saat menunggu ID.")
-
-
-            elif command == "2":
-                await match_fingerprint()
-
-            elif command == "3":
-                print("Masukkan ID...")
-                interact_txt("Masukkan ID\n untuk dihapus:")
-                id_data = await recv_char.written()
-                if id_data:
-                    id_input = id_data[1].decode("utf-8").strip()
-                    if id_input.isdigit():
-                        await remove_fingerprint(int(id_input))
-                    else:
-                        print("ID tidak valid.")
-                else:
-                    print("Timeout saat menunggu ID.")
-
-            elif command == "4":
-                while True:
-                    print("Konfirmasi hapus semua sidik jari? (y/n)")
-                    confirm_data = await recv_char.written()
-                    if confirm_data:
-                        confirm_input = confirm_data[1].decode("utf-8").strip().lower()
-                        if confirm_input == "y":
-                            await clear_all_fingerprints(True)
-                            break  # Keluar dari loop setelah konfirmasi "y"
-                        elif confirm_input == "n":
-                            print("Operasi dibatalkan.")
-                            break  # Keluar dari loop jika pengguna membatalkan
-                        else:
-                            print("Input tidak valid. Silakan masukkan 'y' untuk ya atau 'n' untuk tidak.")
-
-
-            elif command == "5":
-                print("Connecting...")
-                await connect_wifi()
-
-            else:
-                print("Invalid command!")
-
-        except Exception as e:
-            print(f"Error handling BLE data: {e}")
-
-        finally:
-            if connected_device is None:
-                print("BLE disconnect, keluar dari loop.")
-                break
-            print("ble respons mencapai finally.")
-
-
 # fungsi untuk rtc di sinkron`kan dengan ntp
 def sync_rtc():
     global is_rtc_adjust
@@ -348,9 +235,215 @@ def sync_rtc():
     else:
         print("RTC already adjusted.")
 
+async def matchmaking_no_ble():
+    """Pencocokan sidik jari tanpa BLE dengan timeout."""
+    print("Place your finger on the sensor...")
+    home()
+    # Tunggu hingga sidik jari terdeteksi, tidak terus menerus
+    while True:
+        # Cek apakah sidik jari dapat dibaca
+        if finger.readImage():
+            break
+
+        await asyncio.sleep(1)
+
+    beep()  # Suara indikator
+    cycle_images() # animation
+        
+    try:
+        # Proses konversi dan pencocokan sidik jari
+        finger.convertImage(0x01)
+        position, accuracy = finger.searchTemplate()
+
+        if position >= 0:
+            print(f"Fingerprint matched at position {position} with accuracy {accuracy}")
+            log_attendance(position)
+            check()
+            thanks()
+            interact_txt("terima kasih!")
+            await asyncio.sleep(2)
+        else:
+            print("No matching fingerprint found.")
+            cross()
+            bye()
+            interact_txt("Sidik jari\ntidak dikenali!")
+            await asyncio.sleep(2)
+    except Exception as e:
+        print(f"Error during fingerprint matching: {e}")
+        print("Skipping this fingerprint attempt.")
+        cross()
+        bye()  # Penanganan error, keluar dari pencocokan
+        interact_txt("Sidik jari\ntidak dikenali!")
+        await asyncio.sleep(2)
+
+async def ble_ads():
+    """Tugas BLE peripheral untuk advertising."""
+    home()
+    global connected_device
+    while True:  # Loop terus-menerus untuk memulai ulang advertising
+        print("Mulai Advertising BLE...")
+        async with await aioble.advertise(
+            _ADV_INTERVAL_MS, name="PicoW-BLE", services=[SERVICE_UUID]
+        ) as connection:
+            print(f"Koneksi dari perangkat: {connection.device}")
+            connected_device = connection.device
+            btconn()
+            try:
+                await connection.disconnected()  # Tunggu hingga perangkat terputus
+            except Exception as e:
+                print(f"Error during BLE connection: {e}")
+            finally:
+                print("Perangkat terputus.")
+                connected_device = None
+                beep()
+
+async def ble_menu():
+    """Tugas menangani data yang dikirim oleh klien melalui BLE."""
+    try:
+        menu()
+        while connected_device is not None:  # Berhenti jika koneksi terputus
+            try:
+                connection, data = await recv_char.written()
+                if not data:
+                    await asyncio.sleep(1)  # Jika tidak ada data, lanjut loop
+                    continue
+                
+                command = data.decode("utf-8").strip()
+                print(f"Data diterima: {command}")
+
+                if command == "1":
+                    try:
+                        print("Masukkan ID...")
+                        interact_txt("Masukkan ID:")
+                        needinput()
+
+                        id_data = await recv_char.written()
+                        if not id_data or len(id_data) < 2:
+                            print("Timeout saat menunggu ID atau format tidak valid.")
+                            interact_txt("ID tidak\nvalid")
+                            notvalid()
+                            break
+
+                        id_input = id_data[1].decode("utf-8").strip()
+                        if not id_input.isdigit() or int(id_input) <= 0:
+                            print("ID tidak valid.")
+                            interact_txt("ID tidak\nvalid")
+                            notvalid()
+                            break
+
+                        # ✅ Panggil fungsi enroll tanpa konversi di sini
+                        await enroll_fingerprint(id_input)
+
+                    except Exception as e:
+                        print(f"Terjadi kesalahan: {e}")
+                        interact_txt("terjadi kesalahan!")
+                        cancelopt()
+
+                elif command == "2":
+                    await match_fingerprint()
+
+                elif command == "3":
+                    try:
+                        print("Masukkan ID...")
+                        interact_txt("Masukkan ID\n untuk dihapus:")
+                        needinput()
+                        id_data = await recv_char.written()
+                        if not id_data:
+                            print("Timeout saat menunggu ID.")
+                            interact_txt("terlalu lama")
+                            cancelopt()
+                            break
+                        
+                        id_input = id_data[1].decode("utf-8").strip()
+                        if not id_input.isdigit():
+                            print("ID tidak valid.")
+                            interact_txt("ID tidak valid")
+                            notvalid()
+                            break
+                        
+                        beep()
+                        
+                        # Tampilkan konfirmasi
+                        interact_txt(f"Hapus ID {id_input}?\n[1.YES] [2.NO]")
+                        needinput()
+                        confirm_data = await recv_char.written()
+                        if not confirm_data:
+                            print("Timeout saat menunggu konfirmasi.")
+                            interact_txt("terlalu lama")
+                            cancelopt()
+                            break
+                        
+                        confirm_input = confirm_data[1].decode("utf-8").strip()
+                        if confirm_input == "1":
+                            await remove_fingerprint(int(id_input))
+                        else:
+                            print("Penghapusan dibatalkan.")
+                            interact_txt("operasi dibatalkan")
+                            cancelopt()
+                            menu()
+                            break  # Keluar dari loop jika pengguna membatalkan
+                    except Exception as e:
+                        cross()
+                        cancelopt()
+                        interact_txt("terjadi kesalahan!")
+                        print(e)
+
+                elif command == "4":
+                    while True:
+                        try:
+                            print("Konfirmasi hapus semua sidik jari? (y/n)")
+                            interact_txt("hapus semua\nsidik jari?\n[1.YES] [2.NO]")
+                            needinput()
+                            confirm_data = await recv_char.written()
+                            if not confirm_data:
+                                print("Timeout saat menunggu konfirmasi.")
+                                interact_txt("terlalu lama")
+                                cancelopt()
+                                break
+                            
+                            confirm_input = confirm_data[1].decode("utf-8").strip().lower()
+                            if confirm_input == "1":
+                                await clear_all_fingerprints(True)
+                                break  # Keluar dari loop setelah konfirmasi "y"
+                            elif confirm_input == "2":
+                                print("Operasi dibatalkan.")
+                                interact_txt("operasi dibatalkan")
+                                cancelopt()
+                                menu()
+                                break  # Keluar dari loop jika pengguna membatalkan
+                            else:
+                                print("Input tidak valid!")
+                                interact_txt("input\ntidak valid!")
+                                cancelopt()
+                        except Exception as e:
+                            interact_txt("kesalahan terjadi!")
+                            cancelopt()
+                            print(e)
+
+                elif command == "5":
+                    print("Connecting...")
+                    await connect_wifi()
+
+                else:
+                    print("Invalid command!")
+                    interact_txt("input\ntidak valid!")
+                    notvalid()
+                    break
+
+            except Exception as e:
+                print(f"Error handling BLE data: {e}")
+    
+    except Exception as main_error:
+        print(f"Fatal error in ble_respons: {main_error}")
+    
+    finally:
+        if connected_device is None:
+            print("BLE disconnect, keluar dari loop.")
+        print("ble menu masuk ke finally.")
+
 async def device_task():
     """Fungsi utama untuk BLE."""
-    global ble_respons_task, matchmaking_task, is_rtc_adjust
+    global ble_menu_task, matchmaking_task, is_rtc_adjust
 
     if wlan.isconnected():
         print("telah terkoneksi!")
@@ -359,7 +452,7 @@ async def device_task():
             print("rtc telah disinkronkan dengan ntp!")
         led(1)
     else:
-        print("timdakkkk!")
+        print("gagal terhubung")
         is_rtc_adjust = None
         ssid, password = load_wifi()
         if ssid and password:
@@ -383,10 +476,12 @@ async def device_task():
                         await matchmaking_task  # Tunggu task dibatalkan dengan aman
                     except asyncio.CancelledError:
                         print("Matchmaking tanpa BLE dibatalkan.")
+                        # dijadikan none agar yang dijalankan itu tereset sempurna
+                        ble_menu_task = None
 
                 # Jalankan BLE respons jika perangkat terkoneksi
-                if ble_respons_task is None or ble_respons_task.done():
-                    ble_respons_task = asyncio.create_task(ble_respons())
+                if ble_menu_task is None or ble_menu_task.done():
+                    ble_menu_task = asyncio.create_task(ble_menu())
 
             # Tunggu sejenak sebelum mencoba lagi
             await asyncio.sleep(1)
