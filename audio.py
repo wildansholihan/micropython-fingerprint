@@ -4,7 +4,7 @@ from time import sleep
 
 # Inisialisasi DFPlayer
 df = Player(busy_pin=Pin(15))  # BUSY terhubung ke GPIO 15
-df.volume(0.5)
+df.volume(1)
 
 def beep():
     df.play(1, 1)
