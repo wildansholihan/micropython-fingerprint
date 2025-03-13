@@ -57,6 +57,15 @@ aioble.register_services(ble_service)
 # configurasi led untuk indicator wifi
 led = Pin(26, Pin.OUT).value
 
+# matikan dulu koneksi wifi
+led(0)
+
+# untuk bluetooth led, pertama matikan dulu
+led2 = Pin(22, Pin.OUT).value
+
+# matikan dulu bluetooth
+led2(0)
+
 # Variabel untuk menyimpan status koneksi dan tugas
 connected_device = None
 ble_menu_task = None
@@ -287,6 +296,7 @@ async def ble_ads():
         ) as connection:
             print(f"Koneksi dari perangkat: {connection.device}")
             connected_device = connection.device
+            led2(1)
             btconn()
             try:
                 await connection.disconnected()  # Tunggu hingga perangkat terputus
@@ -295,6 +305,7 @@ async def ble_ads():
             finally:
                 print("Perangkat terputus.")
                 connected_device = None
+                led2(0)
                 beep()
 
 async def ble_menu():
