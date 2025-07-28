@@ -30,7 +30,7 @@ micropython-fingerprint/
 ## 🛠️ Persyaratan Hardware
 
 - ESP32 atau board lain yang mendukung MicroPython dan BLE
-- Sensor sidik jari (misal: R503 atau ZFM-20)
+- Sensor sidik jari **AS608** (digunakan dalam proyek ini, namun sebagian model serupa mungkin juga kompatibel)
 - OLED display (SPI/I2C 128x64 atau 128x32)
 - Speaker aktif (untuk audio feedback)
 - (Opsional) Modul RTC & Wi-Fi
